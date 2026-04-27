@@ -13,10 +13,10 @@ from telegram.ext import (
 # ─── НАСТРОЙКИ (через Railway Variables / ENV) ───────────────────────────────
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "8197197463"))
-ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "your_username")  # БЕЗ @
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "sunrisseq")  # БЕЗ @
 ADMIN_CHANNEL_ID = int(os.getenv("ADMIN_CHANNEL_ID", "-1001234567890"))
-REVIEWS_CHANNEL_USERNAME = os.getenv("REVIEWS_CHANNEL_USERNAME", "@your_reviews_channel")
-REVIEWS_CHANNEL_LINK = os.getenv("REVIEWS_CHANNEL_LINK", "https://t.me/your_reviews_channel")
+REVIEWS_CHANNEL_USERNAME = os.getenv("REVIEWS_CHANNEL_USERNAME", "@sunrisse4u")
+REVIEWS_CHANNEL_LINK = os.getenv("REVIEWS_CHANNEL_LINK", "https://t.me/sunrisse4u")
 
 # Кодовое слово (можно тоже менять через ENV, если хочешь)
 SECRET_WORD = os.getenv("SECRET_WORD", "старлинк").strip().lower()
