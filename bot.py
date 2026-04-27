@@ -10,7 +10,8 @@ from telegram.ext import (
 )
 
 # ─── НАСТРОЙКИ ────────────────────────────────────────────────────────────────
-BOT_TOKEN = "ВАШ_BOT_TOKEN"
+import os
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 ADMIN_ID = 8197197463                          # твой Telegram ID
 ADMIN_CHANNEL_ID = -1001234567890              # ID приватного канала для фото
 REVIEWS_CHANNEL_USERNAME = "@your_reviews_channel"
