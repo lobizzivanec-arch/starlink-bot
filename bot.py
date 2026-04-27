@@ -13,16 +13,15 @@ from telegram.ext import (
 # ─── НАСТРОЙКИ (Railway Variables / ENV) ─────────────────────────────────────
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "8197197463"))
-ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "your_username")  # БЕЗ @
+
+# ВАЖНО: в Railway ставь ADMIN_USERNAME=sunrisseq (БЕЗ @)
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "sunrisseq")
+
 ADMIN_CHANNEL_ID = int(os.getenv("ADMIN_CHANNEL_ID", "-1001234567890"))
 REVIEWS_CHANNEL_USERNAME = os.getenv("REVIEWS_CHANNEL_USERNAME", "@your_reviews_channel")
 REVIEWS_CHANNEL_LINK = os.getenv("REVIEWS_CHANNEL_LINK", "https://t.me/your_reviews_channel")
 
-# Кодовое слово
-SECRET_WORD = os.getenv("SECRET_WORD", "старлинк").strip().lower()
-
 # ─── FILE_ID картинок для шагов ──────────────────────────────────────────────
-# Вставь сюда свои file_id картинок из Telegram
 STEP2_IMAGE_1 = os.getenv("STEP2_IMAGE_1", "")
 STEP2_IMAGE_2 = os.getenv("STEP2_IMAGE_2", "")
 
@@ -30,6 +29,8 @@ STEP3_IMAGE_1 = os.getenv("STEP3_IMAGE_1", "")
 STEP3_IMAGE_2 = os.getenv("STEP3_IMAGE_2", "")
 STEP3_IMAGE_3 = os.getenv("STEP3_IMAGE_3", "")
 
+ACCESS_IMAGE_1 = os.getenv("ACCESS_IMAGE_1", "")
+ACCESS_IMAGE_2 = os.getenv("ACCESS_IMAGE_2", "")
 # ──────────────────────────────────────────────────────────────────────────────
 
 logging.basicConfig(
@@ -40,6 +41,9 @@ logger = logging.getLogger(__name__)
 
 # Пользователи, от которых ждём фото/скрин
 waiting_for_photo: set[int] = set()
+
+# Пользователи, которые уже отправили заявку (чтобы не спамили)
+submitted_requests: set[int] = set()
 
 # ─── ТЕКСТЫ ───────────────────────────────────────────────────────────────────
 
@@ -92,14 +96,42 @@ STEP_1_TEXT = """
 
 <b>Краткое описание:</b>
 
-Мы выдаём тебе доступ к аккаунту, в котором отсутствуют ограничения на подключение к Wi-Fi на территории Российской Федерации.
+Мы выдаём тебе доступ к аккаунту, в котором отсутствуют ограничения на подключение к Wi-Fi на территории России
 
 Что нужно сделать:
+• Нажать кнопку <b>«Получить доступ»</b>
 • Получить данные для входа
 • Авторизоваться в аккаунте
-• Убедиться, что вход выполнен успешно
 
 После этого переходи к следующему шагу 👇
+"""
+
+ACCESS_REQUEST_TEXT = """
+✅ <b>Получить доступ</b>
+
+Нажми там, где отмечено <b>красным</b>, затем пролистай вниз и нажми кнопку <b>«Выход»</b>.
+
+После этого я дам тебе <b>почту и пароль</b> для входа.
+
+📸 <b>Теперь просто отправь фото / скрин</b>, как на втором примере ниже.
+
+Администрация рассмотрит заявку и предоставит данные для входа.
+"""
+
+ALREADY_WAITING_TEXT = """
+⏳ <b>Заявка уже активна</b>
+
+Ты уже нажал <b>«Получить доступ»</b>.
+
+📸 Просто отправь фото / скрин по инструкции — мы ждём именно его.
+"""
+
+ALREADY_SUBMITTED_TEXT = """
+📩 <b>Заявка уже отправлена</b>
+
+Мы уже получили твой фото / скрин и отправили его на проверку.
+
+Пожалуйста, дождись ответа поддержки.
 """
 
 STEP_2_TEXT = """
@@ -131,9 +163,6 @@ STEP_3_TEXT = """
 • Дождись стабильного соединения
 
 Ниже смотри примеры настройки 👇
-
-Когда всё сделаешь — отправь кодовое слово:
-<b>старлинк</b>
 """
 
 NOT_SUBSCRIBED_TEXT = """
@@ -142,24 +171,16 @@ NOT_SUBSCRIBED_TEXT = """
 Подпишись по кнопке ниже и нажми <b>«✅ Я подписался»</b> снова.
 """
 
-PHOTO_PROMPT_TEXT = """
-🎉 Кодовое слово принято!
-
-📸 Теперь отправь нам <b>фото / скрин твоей установки Starlink</b> — и мы проверим его.
-
-👇 Просто прикрепи изображение и отправь.
-"""
-
 PHOTO_RECEIVED_TEXT = """
 ✅ Фото / скрин получен! Спасибо.
 
 Ожидайте проверки от поддержки 🛰
 """
 
-PHOTO_APPROVED_TEXT = f"""
+PHOTO_APPROVED_TEXT = """
 ✅ <b>Ваше фото одобрено!</b>
 
-Напишите менеджеру для получения туториала / бонуса 👇
+Напишите менеджеру <b>@sunrisseq</b> для получения данных / доступа 👇
 """
 
 PHOTO_REJECTED_TEXT = """
@@ -171,7 +192,7 @@ PHOTO_REJECTED_TEXT = """
 WRONG_INPUT_TEXT = """
 🤔 Не понял тебя.
 
-Используй кнопки меню или отправь кодовое слово из инструкции.
+Используй кнопки меню или просто отправь фото / скрин по инструкции.
 """
 
 # ─── КЛАВИАТУРЫ ───────────────────────────────────────────────────────────────
@@ -197,6 +218,7 @@ def back_keyboard():
 
 def step_1_keyboard():
     return InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ Получить доступ", callback_data="get_access")],
         [InlineKeyboardButton("➡️ Шаг 2", callback_data="step2")],
         [InlineKeyboardButton("🏠 Главное меню", callback_data="start")],
     ])
@@ -225,6 +247,12 @@ def photo_moderation_keyboard(user_id: int):
 def approved_contact_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("💬 Написать менеджеру", url=f"https://t.me/{ADMIN_USERNAME}")]
+    ])
+
+def retry_request_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📩 Отправить заявку повторно", callback_data="retry_access")],
+        [InlineKeyboardButton("🏠 Главное меню", callback_data="start")],
     ])
 
 # ─── ВСПОМОГАТЕЛЬНОЕ ──────────────────────────────────────────────────────────
@@ -262,6 +290,39 @@ async def send_step_images(chat_id: int, context: ContextTypes.DEFAULT_TYPE, ima
             except Exception as e:
                 logger.error(f"Не удалось отправить картинку {image_id}: {e}")
 
+async def send_access_request_flow(chat_id: int, user_id: int, context: ContextTypes.DEFAULT_TYPE):
+    # Если уже ждём фото
+    if user_id in waiting_for_photo:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=ALREADY_WAITING_TEXT,
+            parse_mode="HTML",
+        )
+        return
+
+    # Если уже отправил заявку и она на проверке
+    if user_id in submitted_requests:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=ALREADY_SUBMITTED_TEXT,
+            parse_mode="HTML",
+        )
+        return
+
+    waiting_for_photo.add(user_id)
+
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=ACCESS_REQUEST_TEXT,
+        parse_mode="HTML",
+    )
+
+    await send_step_images(
+        chat_id=chat_id,
+        context=context,
+        image_ids=[ACCESS_IMAGE_1, ACCESS_IMAGE_2],
+    )
+
 # ─── ХЕНДЛЕРЫ ─────────────────────────────────────────────────────────────────
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -274,11 +335,11 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    admin_clicker_id = query.from_user.id
+    clicker_id = query.from_user.id
 
     # ─── МОДЕРАЦИЯ ФОТО ───────────────────────────────────────────────────────
     if query.data.startswith(("approve:", "reject:")):
-        if admin_clicker_id != ADMIN_ID:
+        if clicker_id != ADMIN_ID:
             await query.answer("У вас нет доступа.", show_alert=True)
             return
 
@@ -290,6 +351,10 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if query.data.startswith("approve:"):
             try:
+                # Заявка больше не "на рассмотрении"
+                submitted_requests.discard(target_id)
+                waiting_for_photo.discard(target_id)
+
                 await context.bot.send_message(
                     chat_id=target_id,
                     text=PHOTO_APPROVED_TEXT,
@@ -320,10 +385,15 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if query.data.startswith("reject:"):
             try:
+                # Снимаем с рассмотрения, чтобы пользователь мог отправить заново
+                submitted_requests.discard(target_id)
+                waiting_for_photo.discard(target_id)
+
                 await context.bot.send_message(
                     chat_id=target_id,
                     text=PHOTO_REJECTED_TEXT,
                     parse_mode="HTML",
+                    reply_markup=retry_request_keyboard(),
                 )
 
                 try:
@@ -399,6 +469,20 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=step_1_keyboard(),
         )
 
+    elif query.data == "get_access":
+        await send_access_request_flow(
+            chat_id=query.message.chat_id,
+            user_id=query.from_user.id,
+            context=context,
+        )
+
+    elif query.data == "retry_access":
+        await send_access_request_flow(
+            chat_id=query.message.chat_id,
+            user_id=query.from_user.id,
+            context=context,
+        )
+
     elif query.data == "step2":
         await context.bot.send_message(
             chat_id=query.message.chat_id,
@@ -432,7 +516,6 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     /reply [ID] [текст]
-    Отправка текста пользователю
     """
     if update.effective_user.id != ADMIN_ID:
         return
@@ -466,7 +549,6 @@ async def cmd_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     /reject [ID] [причина]
-    Ручное отклонение фото с причиной
     """
     if update.effective_user.id != ADMIN_ID:
         return
@@ -484,6 +566,9 @@ async def cmd_reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target_id = int(context.args[0])
         reason = " ".join(context.args[1:]).strip()
 
+        submitted_requests.discard(target_id)
+        waiting_for_photo.discard(target_id)
+
         await context.bot.send_message(
             chat_id=target_id,
             text=(
@@ -492,6 +577,7 @@ async def cmd_reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Отправьте более чёткое фото / скрин ещё раз."
             ),
             parse_mode="HTML",
+            reply_markup=retry_request_keyboard(),
         )
 
         await update.message.reply_text(f"✅ Пользователю {target_id} отправлено отклонение с причиной.")
@@ -501,21 +587,107 @@ async def cmd_reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Ошибка: {e}")
 
+async def cmd_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    /approve [ID] [кастомный текст]
+    """
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    if not context.args or len(context.args) < 2:
+        await update.message.reply_text(
+            "📝 Формат:\n"
+            "/approve [ID пользователя] [текст]\n\n"
+            "Пример:\n"
+            "/approve 987654321 Фото одобрено! Напишите @sunrisseq для получения доступа."
+        )
+        return
+
+    try:
+        target_id = int(context.args[0])
+        custom_text = " ".join(context.args[1:]).strip()
+
+        submitted_requests.discard(target_id)
+        waiting_for_photo.discard(target_id)
+
+        await context.bot.send_message(
+            chat_id=target_id,
+            text=f"✅ <b>Поддержка:</b>\n\n{custom_text}",
+            parse_mode="HTML",
+            reply_markup=approved_contact_keyboard(),
+        )
+
+        await update.message.reply_text(f"✅ Пользователю {target_id} отправлено одобрение с текстом.")
+
+    except ValueError:
+        await update.message.reply_text("❌ Неверный ID. Используй числовой ID.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка: {e}")
+
+async def cmd_getfileid(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    /getfileid — отправить в ответ на фото или документ
+    Либо просто отправить фото/документ с подписью /getfileid
+    """
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    # Если команда как reply на сообщение
+    if update.message.reply_to_message:
+        replied = update.message.reply_to_message
+
+        if replied.photo:
+            file_id = replied.photo[-1].file_id
+            await update.message.reply_text(
+                f"🖼 PHOTO FILE_ID:\n<code>{file_id}</code>",
+                parse_mode="HTML"
+            )
+            return
+
+        if replied.document:
+            file_id = replied.document.file_id
+            await update.message.reply_text(
+                f"📎 DOCUMENT FILE_ID:\n<code>{file_id}</code>",
+                parse_mode="HTML"
+            )
+            return
+
+    await update.message.reply_text(
+        "ℹ️ Использование:\n"
+        "1) Ответь командой <code>/getfileid</code> на фото или файл\n"
+        "или\n"
+        "2) Отправь фото/документ с подписью <code>/getfileid</code>",
+        parse_mode="HTML"
+    )
+
 # ─── АДМИН: ОТПРАВИТЬ СВОЁ ФОТО ──────────────────────────────────────────────
 
 async def admin_reply_photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Админ отправляет СВОЁ фото пользователю через caption:
+    Фото + подпись:
     /replyphoto [ID] [текст]
+    ИЛИ
+    /getfileid
     """
     if update.effective_user.id != ADMIN_ID:
+        return
+
+    caption = update.message.caption or ""
+
+    # Режим получения file_id
+    if caption.strip().startswith("/getfileid"):
+        if update.message.photo:
+            file_id = update.message.photo[-1].file_id
+            await update.message.reply_text(
+                f"🖼 PHOTO FILE_ID:\n<code>{file_id}</code>",
+                parse_mode="HTML"
+            )
         return
 
     if not update.message.photo:
         await update.message.reply_text("❌ Прикрепи фото с подписью: /replyphoto [ID] [текст]")
         return
 
-    caption = update.message.caption or ""
     parts = caption.split(maxsplit=2)
 
     if len(parts) < 2:
@@ -550,17 +722,30 @@ async def admin_reply_photo_handler(update: Update, context: ContextTypes.DEFAUL
 
 async def admin_reply_document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Админ отправляет СВОЙ файл пользователю через caption:
+    Документ + подпись:
     /replydoc [ID] [текст]
+    ИЛИ
+    /getfileid
     """
     if update.effective_user.id != ADMIN_ID:
+        return
+
+    caption = update.message.caption or ""
+
+    # Режим получения file_id
+    if caption.strip().startswith("/getfileid"):
+        if update.message.document:
+            file_id = update.message.document.file_id
+            await update.message.reply_text(
+                f"📎 DOCUMENT FILE_ID:\n<code>{file_id}</code>",
+                parse_mode="HTML"
+            )
         return
 
     if not update.message.document:
         await update.message.reply_text("❌ Прикрепи файл с подписью: /replydoc [ID] [текст]")
         return
 
-    caption = update.message.caption or ""
     parts = caption.split(maxsplit=2)
 
     if len(parts) < 2:
@@ -597,11 +782,9 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     text = update.message.text if update.message.text else ""
 
-    # Игнорируем команды админа, если вдруг не поймались отдельными хендлерами
     if user_id == ADMIN_ID and text.startswith("/"):
         return
 
-    # Если ждём фото/скрин, а пользователь прислал текст
     if user_id in waiting_for_photo:
         await update.message.reply_text(
             "📸 Жду именно <b>фото / скрин</b>, не текст! Прикрепи изображение.",
@@ -609,13 +792,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Кодовое слово
-    if text.strip().lower() == SECRET_WORD:
-        waiting_for_photo.add(user_id)
-        await update.message.reply_text(PHOTO_PROMPT_TEXT, parse_mode="HTML")
-        return
-
-    # Любое другое сообщение пользователя → уведомить админа
     if user_id != ADMIN_ID:
         _, username, full_name = build_user_info(update)
         await notify_admin_text(context, user_id, username, full_name, text)
@@ -631,24 +807,36 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id, username, full_name = build_user_info(update)
 
-    # Защита: фото от админа не считаем пользовательским скрином
+    # Фото от админа без спец-подписи
     if user_id == ADMIN_ID:
         await update.message.reply_text(
             "📸 Для отправки своего фото пользователю:\n"
             "отправь фото с подписью\n"
-            "<code>/replyphoto [ID] [текст]</code>",
+            "<code>/replyphoto [ID] [текст]</code>\n\n"
+            "Чтобы получить file_id:\n"
+            "<code>/getfileid</code> в подписи к фото",
+            parse_mode="HTML",
+        )
+        return
+
+    # Уже отправил заявку
+    if user_id in submitted_requests:
+        await update.message.reply_text(
+            ALREADY_SUBMITTED_TEXT,
             parse_mode="HTML",
         )
         return
 
     if user_id not in waiting_for_photo:
         await update.message.reply_text(
-            "🤔 Сначала введи кодовое слово из инструкции.",
+            "🤔 Сначала нажми кнопку <b>«Получить доступ»</b> в инструкции.",
+            parse_mode="HTML",
             reply_markup=main_keyboard(),
         )
         return
 
     waiting_for_photo.discard(user_id)
+    submitted_requests.add(user_id)
 
     try:
         photo = update.message.photo[-1].file_id
@@ -660,6 +848,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"✏️ Ответить текстом: <code>/reply {user_id} [текст]</code>\n"
             f"📷 Отправить своё фото: фото + подпись <code>/replyphoto {user_id} [текст]</code>\n"
             f"📎 Отправить свой файл: файл + подпись <code>/replydoc {user_id} [текст]</code>\n"
+            f"✅ Одобрить с текстом: <code>/approve {user_id} [текст]</code>\n"
             f"❌ Отклонить с причиной: <code>/reject {user_id} [причина]</code>"
         )
 
@@ -673,6 +862,8 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logger.error(f"Не удалось отправить фото в админ-канал: {e}")
+        submitted_requests.discard(user_id)
+
         await update.message.reply_text(
             "❌ Ошибка при обработке фото. Попробуйте ещё раз позже.",
             reply_markup=main_keyboard(),
@@ -690,24 +881,36 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def document_image_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id, username, full_name = build_user_info(update)
 
-    # Защита: документ от админа — это может быть /replydoc
+    # Документ от админа без спец-подписи
     if user_id == ADMIN_ID:
         await update.message.reply_text(
             "📎 Для отправки своего файла пользователю:\n"
             "отправь документ с подписью\n"
-            "<code>/replydoc [ID] [текст]</code>",
+            "<code>/replydoc [ID] [текст]</code>\n\n"
+            "Чтобы получить file_id:\n"
+            "<code>/getfileid</code> в подписи к документу",
+            parse_mode="HTML",
+        )
+        return
+
+    # Уже отправил заявку
+    if user_id in submitted_requests:
+        await update.message.reply_text(
+            ALREADY_SUBMITTED_TEXT,
             parse_mode="HTML",
         )
         return
 
     if user_id not in waiting_for_photo:
         await update.message.reply_text(
-            "🤔 Сначала введи кодовое слово из инструкции.",
+            "🤔 Сначала нажми кнопку <b>«Получить доступ»</b> в инструкции.",
+            parse_mode="HTML",
             reply_markup=main_keyboard(),
         )
         return
 
     waiting_for_photo.discard(user_id)
+    submitted_requests.add(user_id)
 
     try:
         document = update.message.document.file_id
@@ -721,6 +924,7 @@ async def document_image_handler(update: Update, context: ContextTypes.DEFAULT_T
             f"✏️ Ответить текстом: <code>/reply {user_id} [текст]</code>\n"
             f"📷 Отправить своё фото: фото + подпись <code>/replyphoto {user_id} [текст]</code>\n"
             f"📎 Отправить свой файл: файл + подпись <code>/replydoc {user_id} [текст]</code>\n"
+            f"✅ Одобрить с текстом: <code>/approve {user_id} [текст]</code>\n"
             f"❌ Отклонить с причиной: <code>/reject {user_id} [причина]</code>"
         )
 
@@ -740,6 +944,8 @@ async def document_image_handler(update: Update, context: ContextTypes.DEFAULT_T
 
     except Exception as e:
         logger.error(f"Не удалось отправить document image в админ-канал: {e}")
+        submitted_requests.discard(user_id)
+
         await update.message.reply_text(
             "❌ Ошибка при обработке файла. Попробуйте ещё раз позже.",
             reply_markup=main_keyboard(),
@@ -764,6 +970,8 @@ def main():
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("reply", cmd_reply))
     app.add_handler(CommandHandler("reject", cmd_reject))
+    app.add_handler(CommandHandler("approve", cmd_approve))
+    app.add_handler(CommandHandler("getfileid", cmd_getfileid))
 
     # Кнопки
     app.add_handler(CallbackQueryHandler(callback_handler))
@@ -775,7 +983,17 @@ def main():
     ))
 
     app.add_handler(MessageHandler(
+        filters.PHOTO & filters.CaptionRegex(r"^/getfileid\b"),
+        admin_reply_photo_handler
+    ))
+
+    app.add_handler(MessageHandler(
         filters.Document.ALL & filters.CaptionRegex(r"^/replydoc\b"),
+        admin_reply_document_handler
+    ))
+
+    app.add_handler(MessageHandler(
+        filters.Document.ALL & filters.CaptionRegex(r"^/getfileid\b"),
         admin_reply_document_handler
     ))
 
