@@ -10,9 +10,9 @@ from telegram.ext import (
 )
 
 # ─── НАСТРОЙКИ ────────────────────────────────────────────────────────────────
-import os
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+BOT_TOKEN = "ВАШ_BOT_TOKEN"
 ADMIN_ID = 8197197463                          # твой Telegram ID
+ADMIN_USERNAME = "your_username"               # БЕЗ @, например: my_support
 ADMIN_CHANNEL_ID = -1001234567890              # ID приватного канала для фото
 REVIEWS_CHANNEL_USERNAME = "@your_reviews_channel"
 REVIEWS_CHANNEL_LINK = "https://t.me/your_reviews_channel"
@@ -114,7 +114,7 @@ NOT_SUBSCRIBED_TEXT = """
 PHOTO_PROMPT_TEXT = """
 🎉 Кодовое слово принято!
 
-📸 Теперь отправь нам <b>фото твоей установки Starlink</b> — и мы добавим тебя в нашу галерею реальных пользователей.
+📸 Теперь отправь нам <b>фото / скрин твоей установки Starlink</b> — и мы проверим его.
 
 👇 Просто прикрепи фото и отправь.
 """
@@ -122,7 +122,20 @@ PHOTO_PROMPT_TEXT = """
 PHOTO_RECEIVED_TEXT = """
 ✅ Фото получено! Спасибо.
 
-Мы добавим его в нашу коллекцию реальных установок 🛰
+Ожидайте проверки от поддержки 🛰
+"""
+
+PHOTO_APPROVED_TEXT = f"""
+✅ <b>Ваше фото одобрено!</b>
+
+Напишите менеджеру для получения туториала / бонуса:
+👉 <b>@{ADMIN_USERNAME}</b>
+"""
+
+PHOTO_REJECTED_TEXT = """
+❌ <b>Поддержка не одобрила ваше фото.</b>
+
+Если это ошибка — отправьте более чёткое фото / скрин ещё раз.
 """
 
 WRONG_INPUT_TEXT = """
@@ -152,6 +165,14 @@ def back_keyboard():
         [InlineKeyboardButton("🏠 Главное меню", callback_data="start")],
     ])
 
+def photo_moderation_keyboard(user_id: int):
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ Одобрить", callback_data=f"approve:{user_id}"),
+            InlineKeyboardButton("❌ Отклонить", callback_data=f"reject:{user_id}"),
+        ]
+    ])
+
 # ─── ХЕНДЛЕРЫ ─────────────────────────────────────────────────────────────────
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -167,6 +188,84 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     user_id = query.from_user.id
 
+    # Защита: кнопки модерации доступны только админу
+    if query.data.startswith(("approve:", "reject:")):
+        if user_id != ADMIN_ID:
+            await query.answer("У вас нет доступа.", show_alert=True)
+            return
+
+        try:
+            target_id = int(query.data.split(":")[1])
+        except Exception:
+            await query.answer("Ошибка данных.", show_alert=True)
+            return
+
+        if query.data.startswith("approve:"):
+            try:
+                await context.bot.send_message(
+                    chat_id=target_id,
+                    text=PHOTO_APPROVED_TEXT,
+                    parse_mode="HTML",
+                )
+
+                # Обновляем подпись/текст под сообщением в канале
+                try:
+                    original_text = query.message.caption or query.message.text or "Фото пользователя"
+                    new_text = f"{original_text}\n\n✅ <b>ОДОБРЕНО</b>"
+                    if query.message.photo:
+                        await query.edit_message_caption(
+                            caption=new_text,
+                            parse_mode="HTML",
+                            reply_markup=None,
+                        )
+                    else:
+                        await query.edit_message_text(
+                            text=new_text,
+                            parse_mode="HTML",
+                            reply_markup=None,
+                        )
+                except Exception:
+                    pass
+
+                await query.answer("Фото одобрено ✅")
+            except Exception as e:
+                logger.error(f"Ошибка одобрения фото: {e}")
+                await query.answer("Не удалось одобрить.", show_alert=True)
+            return
+
+        elif query.data.startswith("reject:"):
+            try:
+                await context.bot.send_message(
+                    chat_id=target_id,
+                    text=PHOTO_REJECTED_TEXT,
+                    parse_mode="HTML",
+                )
+
+                try:
+                    original_text = query.message.caption or query.message.text or "Фото пользователя"
+                    new_text = f"{original_text}\n\n❌ <b>ОТКЛОНЕНО</b>"
+                    if query.message.photo:
+                        await query.edit_message_caption(
+                            caption=new_text,
+                            parse_mode="HTML",
+                            reply_markup=None,
+                        )
+                    else:
+                        await query.edit_message_text(
+                            text=new_text,
+                            parse_mode="HTML",
+                            reply_markup=None,
+                        )
+                except Exception:
+                    pass
+
+                await query.answer("Фото отклонено ❌")
+            except Exception as e:
+                logger.error(f"Ошибка отклонения фото: {e}")
+                await query.answer("Не удалось отклонить.", show_alert=True)
+            return
+
+    # Обычные кнопки меню
     if query.data == "start":
         await query.edit_message_text(WELCOME_TEXT, parse_mode="HTML", reply_markup=main_keyboard())
 
@@ -201,19 +300,48 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Только для тебя: /reply [ID] [текст]"""
+    """
+    /reply [ID] [текст]
+    Поддерживает:
+    - текст
+    - фото (если команда отправлена reply на сообщение с фото)
+    """
     if update.effective_user.id != ADMIN_ID:
         return
 
-    if not context.args or len(context.args) < 2:
+    if not context.args or len(context.args) < 1:
         await update.message.reply_text(
-            "📝 Формат:\n/reply [ID пользователя] [текст]\n\nПример:\n/reply 987654321 Привет! Ваш вопрос решён."
+            "📝 Формат:\n"
+            "/reply [ID пользователя] [текст]\n\n"
+            "Пример текста:\n"
+            "/reply 987654321 Привет! Ваш вопрос решён.\n\n"
+            "Пример фото:\n"
+            "Ответь на сообщение с фото командой:\n"
+            "/reply 987654321 Вот ваш туториал"
         )
         return
 
     try:
         target_id = int(context.args[0])
-        reply_text = " ".join(context.args[1:])
+        reply_text = " ".join(context.args[1:]).strip()
+
+        # Если команда отправлена как reply на сообщение с фото → отправляем фото
+        if update.message.reply_to_message and update.message.reply_to_message.photo:
+            photo = update.message.reply_to_message.photo[-1].file_id
+            caption = reply_text if reply_text else "📸 Сообщение от поддержки"
+
+            await context.bot.send_photo(
+                chat_id=target_id,
+                photo=photo,
+                caption=f"💬 Поддержка:\n\n{caption}",
+            )
+            await update.message.reply_text(f"✅ Фото отправлено пользователю {target_id}")
+            return
+
+        # Иначе обычный текст
+        if not reply_text:
+            await update.message.reply_text("❌ Укажи текст сообщения или ответь на фото.")
+            return
 
         await context.bot.send_message(
             chat_id=target_id,
@@ -228,6 +356,43 @@ async def cmd_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Ошибка: {e}")
 
 
+async def cmd_reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    /reject [ID] [причина]
+    Ручное отклонение фото с причиной
+    """
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    if not context.args or len(context.args) < 2:
+        await update.message.reply_text(
+            "📝 Формат:\n/reject [ID пользователя] [причина]\n\n"
+            "Пример:\n/reject 987654321 Фото размыто, пришлите чёткий скрин"
+        )
+        return
+
+    try:
+        target_id = int(context.args[0])
+        reason = " ".join(context.args[1:]).strip()
+
+        await context.bot.send_message(
+            chat_id=target_id,
+            text=(
+                "❌ <b>Поддержка не одобрила ваше фото.</b>\n\n"
+                f"<b>Причина:</b> {reason}\n\n"
+                "Отправьте более чёткое фото / скрин ещё раз."
+            ),
+            parse_mode="HTML",
+        )
+
+        await update.message.reply_text(f"✅ Пользователю {target_id} отправлено отклонение с причиной.")
+
+    except ValueError:
+        await update.message.reply_text("❌ Неверный ID. Используй числовой ID.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка: {e}")
+
+
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     text = update.message.text if update.message.text else ""
@@ -235,7 +400,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Режим ожидания фото
     if user_id in waiting_for_photo:
         await update.message.reply_text(
-            "📸 Жду именно <b>фото</b>, не текст! Прикрепи фотографию.",
+            "📸 Жду именно <b>фото / скрин</b>, не текст! Прикрепи изображение.",
             parse_mode="HTML",
         )
         return
@@ -283,22 +448,28 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     waiting_for_photo.discard(user_id)
 
     try:
-        await context.bot.forward_message(
-            chat_id=ADMIN_CHANNEL_ID,
-            from_chat_id=update.message.chat_id,
-            message_id=update.message.message_id,
+        # Отправляем фото в админ-канал (НЕ forward, а send_photo, чтобы была клавиатура)
+        photo = update.message.photo[-1].file_id
+
+        caption = (
+            f"📸 <b>Фото от пользователя</b>\n"
+            f"👤 {full_name} (@{username})\n"
+            f"🆔 <code>{user_id}</code>\n\n"
+            f"✏️ Ответить текстом: <code>/reply {user_id} [текст]</code>\n"
+            f"✏️ Ответить фото: reply на фото + <code>/reply {user_id} [подпись]</code>\n"
+            f"❌ Отклонить с причиной: <code>/reject {user_id} [причина]</code>"
         )
-        await context.bot.send_message(
+
+        await context.bot.send_photo(
             chat_id=ADMIN_CHANNEL_ID,
-            text=(
-                f"📸 Фото от пользователя\n"
-                f"👤 {full_name} (@{username})\n"
-                f"🆔 {user_id}\n\n"
-                f"✏️ Ответить: /reply {user_id} [текст]"
-            ),
+            photo=photo,
+            caption=caption,
+            parse_mode="HTML",
+            reply_markup=photo_moderation_keyboard(user_id),
         )
+
     except Exception as e:
-        logger.error(f"Не удалось переслать фото: {e}")
+        logger.error(f"Не удалось отправить фото в админ-канал: {e}")
 
     await update.message.reply_text(PHOTO_RECEIVED_TEXT, parse_mode="HTML", reply_markup=main_keyboard())
 
@@ -310,6 +481,7 @@ def main():
 
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("reply", cmd_reply))
+    app.add_handler(CommandHandler("reject", cmd_reject))
     app.add_handler(CallbackQueryHandler(callback_handler))
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
