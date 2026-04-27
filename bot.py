@@ -10,12 +10,14 @@ from telegram.ext import (
 )
 
 # ─── НАСТРОЙКИ ────────────────────────────────────────────────────────────────
-BOT_TOKEN = "ВАШ_BOT_TOKEN"
-ADMIN_ID = 8197197463                          # твой Telegram ID
-ADMIN_USERNAME = "your_username"               # БЕЗ @, например: my_support
-ADMIN_CHANNEL_ID = -1001234567890              # ID приватного канала для фото
-REVIEWS_CHANNEL_USERNAME = "@your_reviews_channel"
-REVIEWS_CHANNEL_LINK = "https://t.me/your_reviews_channel"
+import os
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_ID = int(os.getenv("ADMIN_ID", "8197197463"))
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "your_username")  # без @
+ADMIN_CHANNEL_ID = int(os.getenv("ADMIN_CHANNEL_ID", "-1001234567890"))
+REVIEWS_CHANNEL_USERNAME = os.getenv("REVIEWS_CHANNEL_USERNAME", "@your_reviews_channel")
+REVIEWS_CHANNEL_LINK = os.getenv("REVIEWS_CHANNEL_LINK", "https://t.me/your_reviews_channel")
 # ──────────────────────────────────────────────────────────────────────────────
 
 logging.basicConfig(level=logging.INFO)
