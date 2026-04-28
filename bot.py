@@ -37,6 +37,9 @@ ADMIN_PHOTO_CHANNEL_ID = int(os.getenv("ADMIN_PHOTO_CHANNEL_ID", "-1003907521717
 REVIEWS_CHANNEL_USERNAME = os.getenv("REVIEWS_CHANNEL_USERNAME", "@your_reviews_channel")
 REVIEWS_CHANNEL_LINK = os.getenv("REVIEWS_CHANNEL_LINK", "https://t.me/your_reviews_channel")
 
+# Проверка media при старте
+MEDIA_CHECK_ON_START = os.getenv("MEDIA_CHECK_ON_START", "1") == "1"
+
 # FILE_ID медиа
 REQ_IMAGE_1 = os.getenv("REQ_IMAGE_1", "")
 REQ_IMAGE_2 = os.getenv("REQ_IMAGE_2", "")
@@ -136,36 +139,24 @@ FAQ_TEXT = """
 ❓ <b>Часто задаваемые вопросы</b>
 
 <b>Это реально работает?</b>
-Да. Всё, что показано в видео и в инструкции — рабочая схема, которую уже используют другие пользователи.
-
-<b>Нужно ли покупать оборудование?</b>
-Нет. Для начала тебе не нужно ничего покупать — мы даём пошаговый доступ и показываем, как всё правильно настроить.
-
-<b>Подходит ли это для России?</b>
-Да. Именно поэтому в инструкции есть отдельный этап с доступом к аккаунту без ограничений на подключение к Wi-Fi на территории России.
+Да. Всё, что показано в инструкции — рабочая схема, которую уже используют другие пользователи.
 
 <b>Это сложно настроить?</b>
-Нет. Мы разбили всё на простые шаги:
-• требования перед началом
-• вход в аккаунт
+Нет. Всё разбито на простые шаги:
+• требования
+• доступ к аккаунту
 • установка приложения
-• видео-подключение к Wi-Fi
-• видео-настройка внутри приложения
+• подключение к Wi-Fi
+• настройка в приложении
 • проверка скорости
 
-<b>Сколько занимает настройка?</b>
-Обычно от <b>5 до 15 минут</b>, если всё делать по инструкции.
-
 <b>Что делать, если что-то не получается?</b>
-В боте есть кнопка <b>«💬 Связаться с поддержкой»</b> — можешь написать прямо туда, и мы поможем вручную.
+Нажми <b>«💬 Связаться с поддержкой»</b> — мы ответим вручную.
 
 <b>Нужно ли включать VPN?</b>
-Нет. Наоборот — <b>во время настройки VPN должен быть выключен</b>, чтобы всё корректно сработало.
+Нет. Во время настройки <b>VPN должен быть выключен</b>.
 
-<b>Как понять, что всё настроено правильно?</b>
-На последнем этапе ты запускаешь <b>Speedtest</b> и проверяешь скорость. Если всё сделано верно — интернет работает стабильно.
-
-💡 Хочешь получить пошаговую инструкцию? Нажми <b>«📦 Установка»</b>.
+💡 Хочешь получить инструкцию? Нажми <b>«📦 Установка»</b>.
 """
 
 INSTALL_TEXT = """
@@ -174,12 +165,6 @@ INSTALL_TEXT = """
 Перед получением <b>полного тутора</b> — один обязательный шаг:
 
 👇 Подпишись на наш <b>новый канал с отзывами пользователей Starlink</b>.
-
-Там:
-• реальные отзывы
-• результаты подключения
-• скрины скорости
-• примеры успешной настройки
 
 После подписки нажми кнопку <b>«✅ Я подписался»</b> — и мы сразу откроем пошаговую инструкцию.
 """
@@ -190,29 +175,17 @@ REQUIREMENTS_TEXT = """
 Перед тем как переходить к установке, обязательно проверь:
 
 • <b>Версия iOS не ниже 18.0</b>  
-(желательно обновить iPhone до <b>последней версии iOS</b>)
+(желательно обновить iPhone до последней версии)
 
-• <b>На время настройки полностью выключи VPN</b>  
-(после завершения можно включить обратно)
+• <b>Полностью выключи VPN</b> на время настройки
 
-• <b>Отключи режим энергосбережения</b>  
-(он может мешать стабильной работе приложения и Wi-Fi)
+• <b>Отключи режим энергосбережения</b>
 
-• <b>Включи геолокацию на iPhone</b>  
-(<b>Локатор / Службы геолокации</b> должны быть активны)
+• <b>Включи геолокацию / Локатор</b>
 
-• <b>Разреши приложению Starlink доступ к геопозиции</b>  
-(это важно для корректного поиска сети и настройки)
+• <b>Разреши приложению Starlink доступ к геопозиции</b>
 
-• <b>Разреши доступ к локальной сети и Wi-Fi</b>  
-(если iPhone спросит разрешение — обязательно нажми <b>«Разрешить»</b>)
-
-• <b>Освободи минимум 1–2 ГБ памяти</b>  
-(для установки приложения и обновлений)
-
-• <b>Подключись к стабильному интернету на время настройки</b>
-
-• <b>Закрой лишние приложения перед началом</b>
+• <b>Разреши доступ к локальной сети и Wi-Fi</b>
 
 После этого переходи к <b>Шагу 1</b> 👇
 """
@@ -220,29 +193,25 @@ REQUIREMENTS_TEXT = """
 REQUIREMENTS_TEXT_2 = """
 🖼 <b>Требования — пример 2</b>
 
-Проверь на этом экране:
+Проверь:
+• VPN выключен
+• геолокация включена
+• режим энергосбережения выключен
+• все разрешения активны
 
-• геолокация / Локатор включены  
-• VPN выключен  
-• режим энергосбережения отключён  
-• все системные разрешения активны  
-
-⚠️ Если хотя бы один из пунктов не выполнен — настройка может пройти с ошибками.
-
-После проверки переходи дальше 👇
+⚠️ Если хотя бы один пункт не выполнен — настройка может пройти с ошибками.
 """
 
 REQUIREMENTS_TEXT_3 = """
 🖼 <b>Требования — пример 3</b>
 
-Финальная проверка перед запуском:
+Финальная проверка:
+• iPhone обновлён
+• интернет стабилен
+• доступы выданы
+• система готова к настройке
 
-• iPhone обновлён  
-• интернет стабилен  
-• Starlink получит доступ к геопозиции  
-• ограничения iOS не мешают подключению  
-
-📌 Чем точнее выполнены требования — тем быстрее проходит вся настройка.
+После проверки переходи дальше 👇
 """
 
 STEP_1_TEXT = """
@@ -261,162 +230,111 @@ STEP_1_TEXT = """
 """
 
 STEP_1_IMAGE_2_TEXT = """
-🖼 <b>Шаг 1. Доступ в аккаунт с доступом к Starlink</b>
-
-<b>Дополнительный пример:</b>
+🖼 <b>Шаг 1. Дополнительный пример</b>
 
 На этой картинке показано, как должен выглядеть первый этап перед получением доступа.
 
-Что дальше:
+Далее:
 • Нажми <b>«✅ Получить доступ»</b>
 • Выполни действия по примеру
-• После этого переходи к <b>Шагу 2</b>
-
-⚠️ Важно: делай всё строго по инструкции, чтобы доступ выдался без задержек.
+• Потом переходи к <b>Шагу 2</b>
 """
 
 ACCESS_TEXT_1 = """
 🖼 <b>Получение доступа — пример 1</b>
 
-На изображении показано, куда именно нужно нажать.
-
 Что сделать:
 • Нажми там, где отмечено <b>красным</b>
-• Пролистай экран вниз
-• Нажми кнопку <b>«Выход»</b>
+• Пролистай вниз
+• Нажми <b>«Выход»</b>
 
 После этого:
-• отправь скрин по инструкции
-• администрация проверит его
-• после проверки тебе выдадут данные для входа
-
-⚠️ Важно: если сделать шаг неправильно, доступ может быть отклонён.
+• отправь скрин
+• администрация проверит
+• тебе выдадут данные для входа
 """
 
 ACCESS_TEXT_2 = """
 🖼 <b>Получение доступа — пример 2</b>
 
-Теперь просто отправь <b>фото / скрин</b>, как показано на примере.
+Теперь отправь <b>фото / скрин</b>, как показано на примере.
 
-Что будет дальше:
+Что дальше:
 • администрация проверит скрин
-• если всё сделано правильно — заявка будет одобрена
-• после одобрения ты получишь переход к менеджеру для выдачи данных
-
-📌 Чем чётче и понятнее скрин — тем быстрее проходит проверка.
-
-Нажми <b>«📸 Отправить скрин»</b> и отправь изображение.
+• если всё верно — заявка будет одобрена
+• после одобрения тебя переведут к менеджеру
 """
 
+# КОРОТКИЙ caption — ВАЖНО!
 STEP_2_TEXT = """
 🖼 <b>Шаг 2. Установка приложения Starlink</b>
 
-<b>Краткое описание:</b>
-
-Скачай официальное приложение <b>Starlink</b> через:
-• <b>App Store</b>
-• <b>Google Play</b>
+Скачай приложение <b>только через App Store</b>.
 
 После установки:
-• Открой приложение
-• Разреши необходимые доступы
-• Установи все доступные обновления
+• открой приложение
+• выдай разрешения
+• установи обновления
 
-После этого переходи к следующему шагу 👇
+Далее переходи к <b>Шагу 3</b> 👇
 """
 
 STEP_2_IMAGE_2_TEXT = """
-🖼 <b>Шаг 2. Установка приложения Starlink</b>
-
-<b>Дополнительный пример:</b>
-
-На этой картинке показано, как должно выглядеть приложение после установки / обновления.
+🖼 <b>Шаг 2. Пример после установки</b>
 
 Проверь:
 • приложение установлено
-• все обновления поставлены
-• нужные разрешения выданы
+• обновления поставлены
+• разрешения выданы
 
-После этого переходи к следующему шагу 👇
+После этого переходи к <b>Шагу 3</b> 👇
 """
 
+# КОРОТКИЙ caption — ВАЖНО!
 STEP_3_TEXT = """
 🎬 <b>Шаг 3. Подключение к Wi-Fi</b>
 
-На этом этапе внимательно повтори все действия из видео.
+Повтори действия из видео:
+• выбери нужную сеть
+• подключись к Wi-Fi
+• проверь соединение
 
-Что нужно сделать:
-• открыть нужный раздел
-• выбрать правильную сеть
-• подключиться к Wi-Fi
-• убедиться, что соединение установлено без ошибок
-
-📌 Это ключевой этап перед настройкой внутри приложения.
-
-После просмотра переходи к <b>Шагу 4</b> 👇
+Далее переходи к <b>Шагу 4</b> 👇
 """
 
+# КОРОТКИЙ caption — ВАЖНО!
 STEP_4_TEXT = """
-🎬 <b>Шаг 4. Настройка в приложении Starlink</b>
+🎬 <b>Шаг 4. Настройка в приложении</b>
 
-<b>Краткое описание:</b>
+Повтори действия из видео:
+• открой Starlink
+• подтверди разрешения
+• дождись завершения настройки
 
-После подключения к Wi-Fi открой приложение <b>Starlink</b> и выполни базовую настройку.
-
-Что важно проверить:
-• приложение открылось без ошибок
-• все разрешения подтверждены
-• устройство / соединение определяется корректно
-• инициализация завершилась полностью
-• VPN выключен
-• геолокация активна
-• приложение обновлено до последней версии
-
-📌 Внимательно повторяй все действия из видео.
-
-После завершения переходи к <b>Шагу 5</b> 👇
+После этого переходи к <b>Шагу 5</b> 👇
 """
 
 STEP_5_TEXT = """
 🖼 <b>Шаг 5. Проверка скорости интернета</b>
 
-<b>Краткое описание:</b>
+Проверь скорость через <b>Speedtest</b>:
 
-После завершения настройки обязательно проверь скорость соединения.
-
-Что сделать:
-• открой <b>Speedtest by Ookla</b>
-• или перейди на <b>speedtest.net</b>
+• открой приложение Speedtest
 • запусти тест
-• дождись полного завершения проверки
+• дождись завершения
 
-<b>Нормальный результат:</b>
-• скорость — от <b>50 до 200+ Мбит/с</b>
-• стабильное соединение без резких просадок
-• пинг зависит от региона и условий сети
-
-Если скорость ниже ожидаемой:
-• переподключись к Wi-Fi
-• перезапусти приложение
-• убедись, что VPN выключен
-• проверь, что iOS обновлена
-• повтори тест ещё раз через 1–2 минуты
-
-✅ Если тест прошёл успешно — настройка завершена.
+Если всё ок — настройка завершена ✅
 """
 
 STEP_5_TEXT_2 = """
-🖼 <b>Шаг 5. Пример второго скрина Speedtest</b>
-
-На втором примере показано, как должен выглядеть корректный результат после настройки.
+🖼 <b>Шаг 5. Второй пример Speedtest</b>
 
 Проверь:
-• соединение стабильно
 • тест завершился без ошибок
-• показатели не обрываются
-• загрузка и выгрузка отображаются корректно
+• показатели отображаются корректно
+• соединение стабильное
 
-📌 Если результат похож на пример — всё настроено правильно.
+Если результат похож на пример — всё настроено правильно.
 """
 
 NOT_SUBSCRIBED_TEXT = """
@@ -806,7 +724,6 @@ async def safe_edit_to_text(query, text: str, reply_markup: InlineKeyboardMarkup
     except Exception as e:
         logger.warning(f"safe_edit_to_text fallback: {e}")
         try:
-            # если редактирование не вышло — удаляем и шлём новое
             try:
                 await query.message.delete()
             except Exception:
@@ -826,7 +743,6 @@ async def safe_edit_to_media_or_text(
     text: str,
     reply_markup: InlineKeyboardMarkup,
 ):
-    # если нет картинки — просто текст
     if not image_id:
         await safe_edit_to_text(query, text, reply_markup)
         return
@@ -846,7 +762,6 @@ async def safe_edit_to_media_or_text(
     except Exception as e:
         logger.warning(f"edit_message_media(photo) failed: {e}")
 
-        # если text -> photo не вышло, удаляем старое и шлём новое
         try:
             await query.message.delete()
         except Exception as e_del:
@@ -863,7 +778,6 @@ async def safe_edit_to_media_or_text(
         except Exception as e_send:
             logger.error(f"Не удалось отправить фото заново: {e_send}")
 
-    # крайний fallback
     await safe_edit_to_text(query, text, reply_markup)
 
 async def safe_edit_to_any_media_or_text(
@@ -873,7 +787,6 @@ async def safe_edit_to_any_media_or_text(
     text: str,
     reply_markup: InlineKeyboardMarkup,
 ):
-    # если нет file_id — просто текст
     if not file_id:
         await safe_edit_to_text(query, text, reply_markup)
         return
@@ -901,7 +814,6 @@ async def safe_edit_to_any_media_or_text(
     except Exception as e:
         logger.warning(f"edit_message_media({media_type}) failed: {e}")
 
-        # если text -> media не получилось, удаляем старое и шлём новое
         try:
             await query.message.delete()
         except Exception as e_del:
@@ -926,8 +838,43 @@ async def safe_edit_to_any_media_or_text(
         except Exception as e_send:
             logger.error(f"Не удалось отправить {media_type} заново: {e_send}")
 
-    # крайний fallback
     await safe_edit_to_text(query, text, reply_markup)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ПРОВЕРКА MEDIA НА СТАРТЕ
+# ─────────────────────────────────────────────────────────────────────────────
+async def check_media_on_start(context: ContextTypes.DEFAULT_TYPE):
+    if not MEDIA_CHECK_ON_START:
+        return
+
+    media_map = {
+        "REQ_IMAGE_1": REQ_IMAGE_1,
+        "REQ_IMAGE_2": REQ_IMAGE_2,
+        "REQ_IMAGE_3": REQ_IMAGE_3,
+        "STEP1_IMAGE_1": STEP1_IMAGE_1,
+        "STEP1_IMAGE_2": STEP1_IMAGE_2,
+        "ACCESS_IMAGE_1": ACCESS_IMAGE_1,
+        "ACCESS_IMAGE_2": ACCESS_IMAGE_2,
+        "STEP2_IMAGE_1": STEP2_IMAGE_1,
+        "STEP2_IMAGE_2": STEP2_IMAGE_2,
+        "STEP3_VIDEO": STEP3_VIDEO,
+        "STEP4_VIDEO": STEP4_VIDEO,
+        "STEP5_IMAGE_1": STEP5_IMAGE_1,
+        "STEP5_IMAGE_2": STEP5_IMAGE_2,
+    }
+
+    logger.info("──── Проверка media variables ────")
+    for name, file_id in media_map.items():
+        if not file_id:
+            logger.info(f"{name}: EMPTY")
+            continue
+
+        try:
+            await context.bot.get_file(file_id)
+            logger.info(f"{name}: OK")
+        except Exception as e:
+            logger.error(f"{name}: BAD FILE_ID | {e}")
+    logger.info("──── Конец проверки media ────")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ЭКРАНЫ SINGLE MESSAGE
@@ -1285,7 +1232,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.answer("Не удалось заблокировать.", show_alert=True)
             return
 
-    # ── основная навигация single-message ────────────────────────────────────
+    # ── основная навигация ───────────────────────────────────────────────────
     if data == "start":
         await render_start(query)
         return
@@ -1750,7 +1697,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id, username, full_name = build_user_info(update)
     text = update.message.text if update.message.text else ""
 
-    # игнор команд админа
     if user_id == ADMIN_ID and text.startswith("/"):
         return
 
@@ -1762,7 +1708,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_rate_limit_warning(update)
         return
 
-    # если ждём именно скрин/фото
     if user_id in waiting_for_photo:
         await update.message.reply_text(
             "📸 Жду именно <b>фото / скрин</b>, не текст! Прикрепи изображение.",
@@ -1770,7 +1715,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # обычное сообщение = в поддержку
     await forward_user_text_to_support(context, user_id, username, full_name, text)
 
     if user_id not in active_support_chats:
@@ -1786,7 +1730,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id, username, full_name = build_user_info(update)
 
-    # если админ шлёт фото без /r — подсказка
     if user_id == ADMIN_ID:
         caption = update.message.caption or ""
         if caption.strip().startswith("/r") or caption.strip().startswith("/g"):
@@ -1808,7 +1751,6 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_rate_limit_warning(update)
         return
 
-    # режим заявки
     if user_id in waiting_for_photo:
         if user_id in submitted_requests:
             await update.message.reply_text(ALREADY_SUBMITTED_TEXT, parse_mode="HTML")
@@ -1849,7 +1791,6 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Ошибка при обработке фото. Попробуйте позже.")
         return
 
-    # обычное фото в поддержку
     try:
         await forward_user_photo_to_support(
             context,
@@ -1875,7 +1816,6 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id, username, full_name = build_user_info(update)
 
-    # если админ шлёт видео
     if user_id == ADMIN_ID:
         caption = update.message.caption or ""
         if caption.strip().startswith("/g") or caption.strip().startswith("/r"):
@@ -1898,7 +1838,6 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_rate_limit_warning(update)
         return
 
-    # в режиме заявки ждём только фото/скрин, не видео
     if user_id in waiting_for_photo:
         await update.message.reply_text(
             "📸 Для заявки нужен именно <b>фото / скрин</b>, а не видео.",
@@ -1931,7 +1870,6 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id, username, full_name = build_user_info(update)
 
-    # если админ шлёт файл без /r — подсказка
     if user_id == ADMIN_ID:
         caption = update.message.caption or ""
         if caption.strip().startswith("/r") or caption.strip().startswith("/g"):
@@ -1955,7 +1893,6 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     file_name = update.message.document.file_name or "file"
 
-    # режим заявки: принимаем только image/* как скрин
     if user_id in waiting_for_photo:
         if user_id in submitted_requests:
             await update.message.reply_text(ALREADY_SUBMITTED_TEXT, parse_mode="HTML")
@@ -2007,7 +1944,6 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Ошибка при обработке файла. Попробуйте позже.")
         return
 
-    # обычный файл в поддержку
     try:
         await forward_user_document_to_support(
             context,
@@ -2031,13 +1967,20 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ─────────────────────────────────────────────────────────────────────────────
 # ЗАПУСК
 # ─────────────────────────────────────────────────────────────────────────────
+async def on_startup(app: Application):
+    logger.info("Бот успешно запущен.")
+    try:
+        await check_media_on_start(app)
+    except Exception as e:
+        logger.error(f"Ошибка media-check на старте: {e}")
+
 def main():
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN не найден. Добавь переменную BOT_TOKEN в Railway Variables.")
 
     load_state()
 
-    app = Application.builder().token(BOT_TOKEN).build()
+    app = Application.builder().token(BOT_TOKEN).post_init(on_startup).build()
 
     # команды
     app.add_handler(CommandHandler("start", cmd_start))
