@@ -8,8 +8,6 @@ from telegram import (
     Update,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    InputMediaPhoto,
-    InputMediaVideo,
 )
 from telegram.ext import (
     Application,
@@ -37,10 +35,8 @@ ADMIN_PHOTO_CHANNEL_ID = int(os.getenv("ADMIN_PHOTO_CHANNEL_ID", "-1003907521717
 REVIEWS_CHANNEL_USERNAME = os.getenv("REVIEWS_CHANNEL_USERNAME", "@your_reviews_channel")
 REVIEWS_CHANNEL_LINK = os.getenv("REVIEWS_CHANNEL_LINK", "https://t.me/your_reviews_channel")
 
-# Проверка media при старте
 MEDIA_CHECK_ON_START = os.getenv("MEDIA_CHECK_ON_START", "1") == "1"
 
-# FILE_ID медиа
 REQ_IMAGE_1 = os.getenv("REQ_IMAGE_1", "")
 REQ_IMAGE_2 = os.getenv("REQ_IMAGE_2", "")
 REQ_IMAGE_3 = os.getenv("REQ_IMAGE_3", "")
@@ -83,6 +79,10 @@ blocked_users: set[int] = set()
 # антиспам
 user_last_message_time: dict[int, float] = {}
 
+# стабильный UI
+user_ui_message_ids: dict[int, int] = {}
+user_ui_locks: set[int] = set()
+
 # ─────────────────────────────────────────────────────────────────────────────
 # PERSISTENCE JSON
 # ─────────────────────────────────────────────────────────────────────────────
@@ -93,6 +93,7 @@ def save_state():
             "submitted_requests": list(submitted_requests),
             "active_support_chats": list(active_support_chats),
             "blocked_users": list(blocked_users),
+            "ui_message_ids": {str(k): v for k, v in user_ui_message_ids.items()},
         }
         with open(STATE_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
@@ -100,7 +101,7 @@ def save_state():
         logger.error(f"Ошибка сохранения состояния: {e}")
 
 def load_state():
-    global waiting_for_photo, submitted_requests, active_support_chats, blocked_users
+    global waiting_for_photo, submitted_requests, active_support_chats, blocked_users, user_ui_message_ids
 
     try:
         if not Path(STATE_FILE).exists():
@@ -113,6 +114,7 @@ def load_state():
         submitted_requests = set(map(int, data.get("submitted_requests", [])))
         active_support_chats = set(map(int, data.get("active_support_chats", [])))
         blocked_users = set(map(int, data.get("blocked_users", [])))
+        user_ui_message_ids = {int(k): int(v) for k, v in data.get("ui_message_ids", {}).items()}
     except Exception as e:
         logger.error(f"Ошибка загрузки состояния: {e}")
 
@@ -265,7 +267,6 @@ ACCESS_TEXT_2 = """
 • после одобрения тебя переведут к менеджеру
 """
 
-# КОРОТКИЙ caption — ВАЖНО!
 STEP_2_TEXT = """
 🖼 <b>Шаг 2. Установка приложения Starlink</b>
 
@@ -290,7 +291,6 @@ STEP_2_IMAGE_2_TEXT = """
 После этого переходи к <b>Шагу 3</b> 👇
 """
 
-# КОРОТКИЙ caption — ВАЖНО!
 STEP_3_TEXT = """
 🎬 <b>Шаг 3. Подключение к Wi-Fi</b>
 
@@ -302,7 +302,6 @@ STEP_3_TEXT = """
 Далее переходи к <b>Шагу 4</b> 👇
 """
 
-# КОРОТКИЙ caption — ВАЖНО!
 STEP_4_TEXT = """
 🎬 <b>Шаг 4. Настройка в приложении</b>
 
@@ -443,7 +442,6 @@ def support_keyboard():
 
 def requirements_keyboard(page: int):
     rows = []
-
     nav = []
     if page > 1:
         nav.append(InlineKeyboardButton("⬅️ Назад", callback_data=f"req:{page-1}"))
@@ -451,16 +449,13 @@ def requirements_keyboard(page: int):
         nav.append(InlineKeyboardButton("➡️ Далее", callback_data=f"req:{page+1}"))
     if nav:
         rows.append(nav)
-
     rows.append([InlineKeyboardButton("➡️ Перейти к Шагу 1", callback_data="step1:1")])
     rows.append([InlineKeyboardButton("💬 Поддержка", callback_data="support")])
     rows.append([InlineKeyboardButton("🏠 Главное меню", callback_data="start")])
-
     return InlineKeyboardMarkup(rows)
 
 def step1_keyboard(page: int):
     rows = []
-
     nav = []
     if page > 1:
         nav.append(InlineKeyboardButton("⬅️ Фото 1", callback_data="step1:1"))
@@ -468,17 +463,14 @@ def step1_keyboard(page: int):
         nav.append(InlineKeyboardButton("➡️ Фото 2", callback_data="step1:2"))
     if nav:
         rows.append(nav)
-
     rows.append([InlineKeyboardButton("✅ Получить доступ", callback_data="access:1")])
     rows.append([InlineKeyboardButton("➡️ Шаг 2", callback_data="step2:1")])
     rows.append([InlineKeyboardButton("💬 Поддержка", callback_data="support")])
     rows.append([InlineKeyboardButton("🏠 Главное меню", callback_data="start")])
-
     return InlineKeyboardMarkup(rows)
 
 def access_keyboard(page: int):
     rows = []
-
     nav = []
     if page > 1:
         nav.append(InlineKeyboardButton("⬅️ Фото 1", callback_data="access:1"))
@@ -486,17 +478,14 @@ def access_keyboard(page: int):
         nav.append(InlineKeyboardButton("➡️ Фото 2", callback_data="access:2"))
     if nav:
         rows.append(nav)
-
     rows.append([InlineKeyboardButton("📸 Отправить скрин", callback_data="access_wait")])
     rows.append([InlineKeyboardButton("➡️ Шаг 2", callback_data="step2:1")])
     rows.append([InlineKeyboardButton("💬 Поддержка", callback_data="support")])
     rows.append([InlineKeyboardButton("🏠 Главное меню", callback_data="start")])
-
     return InlineKeyboardMarkup(rows)
 
 def step2_keyboard(page: int):
     rows = []
-
     nav = []
     if page > 1:
         nav.append(InlineKeyboardButton("⬅️ Фото 1", callback_data="step2:1"))
@@ -504,14 +493,12 @@ def step2_keyboard(page: int):
         nav.append(InlineKeyboardButton("➡️ Фото 2", callback_data="step2:2"))
     if nav:
         rows.append(nav)
-
     rows.append([
         InlineKeyboardButton("⬅️ Шаг 1", callback_data="step1:1"),
         InlineKeyboardButton("➡️ Шаг 3", callback_data="step3:1"),
     ])
     rows.append([InlineKeyboardButton("💬 Поддержка", callback_data="support")])
     rows.append([InlineKeyboardButton("🏠 Главное меню", callback_data="start")])
-
     return InlineKeyboardMarkup(rows)
 
 def step3_keyboard():
@@ -536,7 +523,6 @@ def step4_keyboard():
 
 def step5_keyboard(page: int):
     rows = []
-
     nav = []
     if page > 1:
         nav.append(InlineKeyboardButton("⬅️ Скрин 1", callback_data="step5:1"))
@@ -544,11 +530,9 @@ def step5_keyboard(page: int):
         nav.append(InlineKeyboardButton("➡️ Скрин 2", callback_data="step5:2"))
     if nav:
         rows.append(nav)
-
     rows.append([InlineKeyboardButton("⬅️ Шаг 4", callback_data="step4:1")])
     rows.append([InlineKeyboardButton("💬 Поддержка", callback_data="support")])
     rows.append([InlineKeyboardButton("🏠 Главное меню", callback_data="start")])
-
     return InlineKeyboardMarkup(rows)
 
 def approved_contact_keyboard():
@@ -590,13 +574,10 @@ def build_user_info(update: Update) -> tuple[int, str, str]:
 def is_user_rate_limited(user_id: int) -> bool:
     if user_id == ADMIN_ID:
         return False
-
     now = time.time()
     last_ts = user_last_message_time.get(user_id)
-
     if last_ts is not None and (now - last_ts) < USER_MESSAGE_COOLDOWN:
         return True
-
     user_last_message_time[user_id] = now
     return False
 
@@ -657,34 +638,26 @@ def parse_r_text_args(update: Update, context: ContextTypes.DEFAULT_TYPE) -> tup
 def parse_r_media_caption(caption: str) -> tuple[int | None, str]:
     if not caption:
         return None, ""
-
     if not caption.strip().startswith("/r"):
         return None, ""
-
     body = caption.strip()[2:].strip()
     if not body:
         return None, ""
-
     parts = body.split(maxsplit=1)
-
     if parts and parts[0].isdigit():
         target_id = int(parts[0])
         reply_text = parts[1] if len(parts) > 1 else ""
         return target_id, reply_text
-
     return None, body
 
 def get_target_id_for_r_media(update: Update) -> tuple[int | None, str]:
     caption = update.message.caption or ""
     explicit_id, reply_text = parse_r_media_caption(caption)
-
     if explicit_id:
         return explicit_id, reply_text
-
     reply_target = resolve_target_id_from_reply(update)
     if reply_target:
         return reply_target, reply_text
-
     return None, reply_text
 
 async def open_support_chat_for_user(context: ContextTypes.DEFAULT_TYPE, user_id: int):
@@ -705,140 +678,77 @@ async def open_support_chat_for_user(context: ContextTypes.DEFAULT_TYPE, user_id
         logger.error(f"Не удалось открыть чат поддержки для {user_id}: {e}")
 
 # ─────────────────────────────────────────────────────────────────────────────
-# SAFE EDIT / SINGLE-MESSAGE FIX
+# STABLE UI (без edit_message_media)
 # ─────────────────────────────────────────────────────────────────────────────
-async def safe_edit_to_text(query, text: str, reply_markup: InlineKeyboardMarkup):
+async def acquire_ui_lock(user_id: int) -> bool:
+    if user_id in user_ui_locks:
+        return False
+    user_ui_locks.add(user_id)
+    return True
+
+def release_ui_lock(user_id: int):
+    user_ui_locks.discard(user_id)
+
+async def cleanup_old_ui_message(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
+    old_message_id = user_ui_message_ids.get(chat_id)
+    if not old_message_id:
+        return
+
     try:
-        if query.message.photo or query.message.video:
-            await query.edit_message_caption(
+        await context.bot.delete_message(chat_id=chat_id, message_id=old_message_id)
+    except Exception:
+        pass
+
+async def send_new_ui_message(
+    context: ContextTypes.DEFAULT_TYPE,
+    chat_id: int,
+    text: str,
+    reply_markup: InlineKeyboardMarkup,
+    media_type: str | None = None,
+    file_id: str | None = None,
+):
+    await cleanup_old_ui_message(context, chat_id)
+
+    sent = None
+
+    try:
+        if media_type == "photo" and file_id:
+            sent = await context.bot.send_photo(
+                chat_id=chat_id,
+                photo=file_id,
+                caption=text[:1024],
+                parse_mode="HTML",
+                reply_markup=reply_markup,
+            )
+        elif media_type == "video" and file_id:
+            sent = await context.bot.send_video(
+                chat_id=chat_id,
+                video=file_id,
                 caption=text[:1024],
                 parse_mode="HTML",
                 reply_markup=reply_markup,
             )
         else:
-            await query.edit_message_text(
+            sent = await context.bot.send_message(
+                chat_id=chat_id,
                 text=text,
                 parse_mode="HTML",
                 reply_markup=reply_markup,
             )
+
     except Exception as e:
-        logger.warning(f"safe_edit_to_text fallback: {e}")
-        try:
-            try:
-                await query.message.delete()
-            except Exception:
-                pass
+        logger.warning(f"send_new_ui_message media fallback: {e}")
 
-            await query.message.chat.send_message(
-                text=text,
-                parse_mode="HTML",
-                reply_markup=reply_markup,
-            )
-        except Exception as e2:
-            logger.error(f"safe_edit_to_text failed: {e2}")
-
-async def safe_edit_to_media_or_text(
-    query,
-    image_id: str,
-    text: str,
-    reply_markup: InlineKeyboardMarkup,
-):
-    if not image_id:
-        await safe_edit_to_text(query, text, reply_markup)
-        return
-
-    try:
-        media = InputMediaPhoto(
-            media=image_id,
-            caption=text[:1024],
+        sent = await context.bot.send_message(
+            chat_id=chat_id,
+            text=text,
             parse_mode="HTML",
-        )
-        await query.edit_message_media(
-            media=media,
             reply_markup=reply_markup,
         )
-        return
 
-    except Exception as e:
-        logger.warning(f"edit_message_media(photo) failed: {e}")
-
-        try:
-            await query.message.delete()
-        except Exception as e_del:
-            logger.warning(f"Не удалось удалить старое сообщение: {e_del}")
-
-        try:
-            await query.message.chat.send_photo(
-                photo=image_id,
-                caption=text[:1024],
-                parse_mode="HTML",
-                reply_markup=reply_markup,
-            )
-            return
-        except Exception as e_send:
-            logger.error(f"Не удалось отправить фото заново: {e_send}")
-
-    await safe_edit_to_text(query, text, reply_markup)
-
-async def safe_edit_to_any_media_or_text(
-    query,
-    media_type: str,
-    file_id: str,
-    text: str,
-    reply_markup: InlineKeyboardMarkup,
-):
-    if not file_id:
-        await safe_edit_to_text(query, text, reply_markup)
-        return
-
-    try:
-        if media_type == "video":
-            media = InputMediaVideo(
-                media=file_id,
-                caption=text[:1024],
-                parse_mode="HTML",
-            )
-        else:
-            media = InputMediaPhoto(
-                media=file_id,
-                caption=text[:1024],
-                parse_mode="HTML",
-            )
-
-        await query.edit_message_media(
-            media=media,
-            reply_markup=reply_markup,
-        )
-        return
-
-    except Exception as e:
-        logger.warning(f"edit_message_media({media_type}) failed: {e}")
-
-        try:
-            await query.message.delete()
-        except Exception as e_del:
-            logger.warning(f"Не удалось удалить старое сообщение: {e_del}")
-
-        try:
-            if media_type == "video":
-                await query.message.chat.send_video(
-                    video=file_id,
-                    caption=text[:1024],
-                    parse_mode="HTML",
-                    reply_markup=reply_markup,
-                )
-            else:
-                await query.message.chat.send_photo(
-                    photo=file_id,
-                    caption=text[:1024],
-                    parse_mode="HTML",
-                    reply_markup=reply_markup,
-                )
-            return
-        except Exception as e_send:
-            logger.error(f"Не удалось отправить {media_type} заново: {e_send}")
-
-    await safe_edit_to_text(query, text, reply_markup)
+    user_ui_message_ids[chat_id] = sent.message_id
+    save_state()
+    return sent
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ПРОВЕРКА MEDIA НА СТАРТЕ
@@ -877,25 +787,50 @@ async def check_media_on_start(context: ContextTypes.DEFAULT_TYPE):
     logger.info("──── Конец проверки media ────")
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ЭКРАНЫ SINGLE MESSAGE
+# ЭКРАНЫ
 # ─────────────────────────────────────────────────────────────────────────────
-async def render_start(query):
-    await safe_edit_to_text(query, WELCOME_TEXT, main_keyboard())
+async def render_start(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
+    await send_new_ui_message(
+        context=context,
+        chat_id=chat_id,
+        text=WELCOME_TEXT,
+        reply_markup=main_keyboard(),
+    )
 
-async def render_faq(query):
-    await safe_edit_to_text(query, FAQ_TEXT, faq_keyboard())
+async def render_faq(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
+    await send_new_ui_message(
+        context=context,
+        chat_id=chat_id,
+        text=FAQ_TEXT,
+        reply_markup=faq_keyboard(),
+    )
 
-async def render_install(query):
-    await safe_edit_to_text(query, INSTALL_TEXT, install_keyboard())
+async def render_install(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
+    await send_new_ui_message(
+        context=context,
+        chat_id=chat_id,
+        text=INSTALL_TEXT,
+        reply_markup=install_keyboard(),
+    )
 
-async def render_support(query):
-    if query.from_user.id in blocked_users:
-        await safe_edit_to_text(query, SUPPORT_BLOCKED_TEXT, support_keyboard())
+async def render_support(context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id: int):
+    if user_id in blocked_users:
+        await send_new_ui_message(
+            context=context,
+            chat_id=chat_id,
+            text=SUPPORT_BLOCKED_TEXT,
+            reply_markup=support_keyboard(),
+        )
         return
 
-    await safe_edit_to_text(query, SUPPORT_MENU_TEXT, support_keyboard())
+    await send_new_ui_message(
+        context=context,
+        chat_id=chat_id,
+        text=SUPPORT_MENU_TEXT,
+        reply_markup=support_keyboard(),
+    )
 
-async def render_requirements(query, page: int):
+async def render_requirements(context: ContextTypes.DEFAULT_TYPE, chat_id: int, page: int):
     if page == 2:
         text = REQUIREMENTS_TEXT_2
         image = REQ_IMAGE_2
@@ -906,14 +841,16 @@ async def render_requirements(query, page: int):
         text = REQUIREMENTS_TEXT
         image = REQ_IMAGE_1
 
-    await safe_edit_to_media_or_text(
-        query=query,
-        image_id=image,
+    await send_new_ui_message(
+        context=context,
+        chat_id=chat_id,
         text=text,
         reply_markup=requirements_keyboard(page),
+        media_type="photo" if image else None,
+        file_id=image if image else None,
     )
 
-async def render_step1(query, page: int):
+async def render_step1(context: ContextTypes.DEFAULT_TYPE, chat_id: int, page: int):
     if page == 2:
         text = STEP_1_IMAGE_2_TEXT
         image = STEP1_IMAGE_2
@@ -921,16 +858,23 @@ async def render_step1(query, page: int):
         text = STEP_1_TEXT
         image = STEP1_IMAGE_1
 
-    await safe_edit_to_media_or_text(
-        query=query,
-        image_id=image,
+    await send_new_ui_message(
+        context=context,
+        chat_id=chat_id,
         text=text,
         reply_markup=step1_keyboard(page),
+        media_type="photo" if image else None,
+        file_id=image if image else None,
     )
 
-async def render_access(query, page: int):
-    if query.from_user.id in blocked_users:
-        await safe_edit_to_text(query, SUPPORT_BLOCKED_TEXT, support_keyboard())
+async def render_access(context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id: int, page: int):
+    if user_id in blocked_users:
+        await send_new_ui_message(
+            context=context,
+            chat_id=chat_id,
+            text=SUPPORT_BLOCKED_TEXT,
+            reply_markup=support_keyboard(),
+        )
         return
 
     if page == 2:
@@ -940,34 +884,54 @@ async def render_access(query, page: int):
         text = ACCESS_TEXT_1
         image = ACCESS_IMAGE_1
 
-    await safe_edit_to_media_or_text(
-        query=query,
-        image_id=image,
+    await send_new_ui_message(
+        context=context,
+        chat_id=chat_id,
         text=text,
         reply_markup=access_keyboard(page),
+        media_type="photo" if image else None,
+        file_id=image if image else None,
     )
 
-async def render_access_wait(query):
-    user_id = query.from_user.id
-
+async def render_access_wait(context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id: int):
     if user_id in blocked_users:
-        await safe_edit_to_text(query, SUPPORT_BLOCKED_TEXT, support_keyboard())
+        await send_new_ui_message(
+            context=context,
+            chat_id=chat_id,
+            text=SUPPORT_BLOCKED_TEXT,
+            reply_markup=support_keyboard(),
+        )
         return
 
     if user_id in waiting_for_photo:
-        await safe_edit_to_text(query, ALREADY_WAITING_TEXT, access_keyboard(2))
+        await send_new_ui_message(
+            context=context,
+            chat_id=chat_id,
+            text=ALREADY_WAITING_TEXT,
+            reply_markup=access_keyboard(2),
+        )
         return
 
     if user_id in submitted_requests:
-        await safe_edit_to_text(query, ALREADY_SUBMITTED_TEXT, retry_request_keyboard())
+        await send_new_ui_message(
+            context=context,
+            chat_id=chat_id,
+            text=ALREADY_SUBMITTED_TEXT,
+            reply_markup=retry_request_keyboard(),
+        )
         return
 
     waiting_for_photo.add(user_id)
     save_state()
 
-    await safe_edit_to_text(query, WAITING_FOR_SCREEN_TEXT, retry_request_keyboard())
+    await send_new_ui_message(
+        context=context,
+        chat_id=chat_id,
+        text=WAITING_FOR_SCREEN_TEXT,
+        reply_markup=retry_request_keyboard(),
+    )
 
-async def render_step2(query, page: int):
+async def render_step2(context: ContextTypes.DEFAULT_TYPE, chat_id: int, page: int):
     if page == 2:
         text = STEP_2_IMAGE_2_TEXT
         image = STEP2_IMAGE_2
@@ -975,32 +939,36 @@ async def render_step2(query, page: int):
         text = STEP_2_TEXT
         image = STEP2_IMAGE_1
 
-    await safe_edit_to_media_or_text(
-        query=query,
-        image_id=image,
+    await send_new_ui_message(
+        context=context,
+        chat_id=chat_id,
         text=text,
         reply_markup=step2_keyboard(page),
+        media_type="photo" if image else None,
+        file_id=image if image else None,
     )
 
-async def render_step3(query, page: int = 1):
-    await safe_edit_to_any_media_or_text(
-        query=query,
-        media_type="video",
-        file_id=STEP3_VIDEO,
+async def render_step3(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
+    await send_new_ui_message(
+        context=context,
+        chat_id=chat_id,
         text=STEP_3_TEXT,
         reply_markup=step3_keyboard(),
+        media_type="video" if STEP3_VIDEO else None,
+        file_id=STEP3_VIDEO if STEP3_VIDEO else None,
     )
 
-async def render_step4(query, page: int = 1):
-    await safe_edit_to_any_media_or_text(
-        query=query,
-        media_type="video",
-        file_id=STEP4_VIDEO,
+async def render_step4(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
+    await send_new_ui_message(
+        context=context,
+        chat_id=chat_id,
         text=STEP_4_TEXT,
         reply_markup=step4_keyboard(),
+        media_type="video" if STEP4_VIDEO else None,
+        file_id=STEP4_VIDEO if STEP4_VIDEO else None,
     )
 
-async def render_step5(query, page: int = 1):
+async def render_step5(context: ContextTypes.DEFAULT_TYPE, chat_id: int, page: int):
     if page == 2:
         text = STEP_5_TEXT_2
         image = STEP5_IMAGE_2
@@ -1008,11 +976,13 @@ async def render_step5(query, page: int = 1):
         text = STEP_5_TEXT
         image = STEP5_IMAGE_1
 
-    await safe_edit_to_media_or_text(
-        query=query,
-        image_id=image,
+    await send_new_ui_message(
+        context=context,
+        chat_id=chat_id,
         text=text,
         reply_markup=step5_keyboard(page),
+        media_type="photo" if image else None,
+        file_id=image if image else None,
     )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1122,181 +1092,180 @@ async def forward_user_document_to_support(
 # CALLBACK / КНОПКИ
 # ─────────────────────────────────────────────────────────────────────────────
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        WELCOME_TEXT,
-        parse_mode="HTML",
-        reply_markup=main_keyboard(),
-    )
+    await render_start(context, update.effective_chat.id)
 
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
-    clicker_id = query.from_user.id
-    data = query.data
+    user_id = query.from_user.id
 
-    # ── модерация фото ───────────────────────────────────────────────────────
-    if data.startswith(("approve:", "reject:", "blockcb:")):
-        if clicker_id != ADMIN_ID:
-            await query.answer("У вас нет доступа.", show_alert=True)
-            return
+    if not await acquire_ui_lock(user_id):
+        await query.answer("⏳ Подожди...", show_alert=False)
+        return
 
-        try:
-            target_id = int(data.split(":")[1])
-        except Exception:
-            await query.answer("Ошибка данных.", show_alert=True)
-            return
+    try:
+        await query.answer()
+        clicker_id = query.from_user.id
+        data = query.data
+        chat_id = query.message.chat_id
 
-        if data.startswith("approve:"):
+        # ── модерация фото ────────────────────────────────────────────────────
+        if data.startswith(("approve:", "reject:", "blockcb:")):
+            if clicker_id != ADMIN_ID:
+                await query.answer("У вас нет доступа.", show_alert=True)
+                return
+
             try:
-                submitted_requests.discard(target_id)
-                waiting_for_photo.discard(target_id)
-                save_state()
+                target_id = int(data.split(":")[1])
+            except Exception:
+                await query.answer("Ошибка данных.", show_alert=True)
+                return
 
-                await context.bot.send_message(
-                    chat_id=target_id,
-                    text=PHOTO_APPROVED_TEXT,
-                    parse_mode="HTML",
-                    reply_markup=approved_contact_keyboard(),
-                )
-
+            if data.startswith("approve:"):
                 try:
-                    if query.message.photo:
-                        old_caption = query.message.caption or ""
-                        new_caption = f"{old_caption}\n\n✅ <b>ОДОБРЕНО</b>"
-                        await query.edit_message_caption(
-                            caption=new_caption[:1024],
-                            parse_mode="HTML",
-                            reply_markup=None,
-                        )
-                    else:
+                    submitted_requests.discard(target_id)
+                    waiting_for_photo.discard(target_id)
+                    save_state()
+
+                    await context.bot.send_message(
+                        chat_id=target_id,
+                        text=PHOTO_APPROVED_TEXT,
+                        parse_mode="HTML",
+                        reply_markup=approved_contact_keyboard(),
+                    )
+
+                    try:
                         await query.edit_message_reply_markup(reply_markup=None)
+                    except Exception:
+                        pass
+
+                    await query.answer("Фото одобрено ✅")
                 except Exception as e:
-                    logger.warning(f"approve edit fail: {e}")
+                    logger.error(f"Ошибка approve: {e}")
+                    await query.answer("Не удалось одобрить.", show_alert=True)
+                return
 
-                await query.answer("Фото одобрено ✅")
-            except Exception as e:
-                logger.error(f"Ошибка approve: {e}")
-                await query.answer("Не удалось одобрить.", show_alert=True)
-            return
-
-        if data.startswith("reject:"):
-            try:
-                submitted_requests.discard(target_id)
-                waiting_for_photo.discard(target_id)
-                save_state()
-
-                await context.bot.send_message(
-                    chat_id=target_id,
-                    text=PHOTO_REJECTED_TEXT,
-                    parse_mode="HTML",
-                    reply_markup=retry_request_keyboard(),
-                )
-
+            if data.startswith("reject:"):
                 try:
-                    if query.message.photo:
-                        old_caption = query.message.caption or ""
-                        new_caption = f"{old_caption}\n\n❌ <b>ОТКЛОНЕНО</b>"
-                        await query.edit_message_caption(
-                            caption=new_caption[:1024],
-                            parse_mode="HTML",
-                            reply_markup=None,
-                        )
-                    else:
+                    submitted_requests.discard(target_id)
+                    waiting_for_photo.discard(target_id)
+                    save_state()
+
+                    await context.bot.send_message(
+                        chat_id=target_id,
+                        text=PHOTO_REJECTED_TEXT,
+                        parse_mode="HTML",
+                        reply_markup=retry_request_keyboard(),
+                    )
+
+                    try:
                         await query.edit_message_reply_markup(reply_markup=None)
+                    except Exception:
+                        pass
+
+                    await query.answer("Фото отклонено ❌")
                 except Exception as e:
-                    logger.warning(f"reject edit fail: {e}")
+                    logger.error(f"Ошибка reject: {e}")
+                    await query.answer("Не удалось отклонить.", show_alert=True)
+                return
 
-                await query.answer("Фото отклонено ❌")
-            except Exception as e:
-                logger.error(f"Ошибка reject: {e}")
-                await query.answer("Не удалось отклонить.", show_alert=True)
+            if data.startswith("blockcb:"):
+                try:
+                    blocked_users.add(target_id)
+                    active_support_chats.discard(target_id)
+                    waiting_for_photo.discard(target_id)
+                    submitted_requests.discard(target_id)
+                    save_state()
+
+                    await context.bot.send_message(
+                        chat_id=target_id,
+                        text=SUPPORT_BLOCKED_TEXT,
+                        parse_mode="HTML",
+                    )
+
+                    await query.answer("Пользователь заблокирован ⛔")
+                except Exception as e:
+                    logger.error(f"Ошибка blockcb: {e}")
+                    await query.answer("Не удалось заблокировать.", show_alert=True)
+                return
+
+        # ── основная навигация ────────────────────────────────────────────────
+        if data == "start":
+            await render_start(context, chat_id)
             return
 
-        if data.startswith("blockcb:"):
+        if data == "faq":
+            await render_faq(context, chat_id)
+            return
+
+        if data == "install":
+            await render_install(context, chat_id)
+            return
+
+        if data == "support":
+            await render_support(context, chat_id, user_id)
+            return
+
+        if data == "check_sub":
             try:
-                blocked_users.add(target_id)
-                active_support_chats.discard(target_id)
-                waiting_for_photo.discard(target_id)
-                submitted_requests.discard(target_id)
-                save_state()
-
-                await context.bot.send_message(
-                    chat_id=target_id,
-                    text=SUPPORT_BLOCKED_TEXT,
-                    parse_mode="HTML",
-                )
-
-                await query.answer("Пользователь заблокирован ⛔")
+                member = await context.bot.get_chat_member(REVIEWS_CHANNEL_USERNAME, user_id)
+                if member.status in ("member", "administrator", "creator"):
+                    await render_requirements(context, chat_id, 1)
+                else:
+                    await send_new_ui_message(
+                        context=context,
+                        chat_id=chat_id,
+                        text=NOT_SUBSCRIBED_TEXT,
+                        reply_markup=install_keyboard(),
+                    )
             except Exception as e:
-                logger.error(f"Ошибка blockcb: {e}")
-                await query.answer("Не удалось заблокировать.", show_alert=True)
+                logger.error(f"Ошибка проверки подписки: {e}")
+                await send_new_ui_message(
+                    context=context,
+                    chat_id=chat_id,
+                    text=NOT_SUBSCRIBED_TEXT,
+                    reply_markup=install_keyboard(),
+                )
             return
 
-    # ── основная навигация ───────────────────────────────────────────────────
-    if data == "start":
-        await render_start(query)
-        return
+        if data.startswith("req:"):
+            page = int(data.split(":")[1])
+            await render_requirements(context, chat_id, page)
+            return
 
-    if data == "faq":
-        await render_faq(query)
-        return
+        if data.startswith("step1:"):
+            page = int(data.split(":")[1])
+            await render_step1(context, chat_id, page)
+            return
 
-    if data == "install":
-        await render_install(query)
-        return
+        if data.startswith("access:"):
+            page = int(data.split(":")[1])
+            await render_access(context, chat_id, user_id, page)
+            return
 
-    if data == "support":
-        await render_support(query)
-        return
+        if data == "access_wait":
+            await render_access_wait(context, chat_id, user_id)
+            return
 
-    if data == "check_sub":
-        try:
-            member = await context.bot.get_chat_member(REVIEWS_CHANNEL_USERNAME, query.from_user.id)
-            if member.status in ("member", "administrator", "creator"):
-                await render_requirements(query, 1)
-            else:
-                await safe_edit_to_text(query, NOT_SUBSCRIBED_TEXT, install_keyboard())
-        except Exception as e:
-            logger.error(f"Ошибка проверки подписки: {e}")
-            await safe_edit_to_text(query, NOT_SUBSCRIBED_TEXT, install_keyboard())
-        return
+        if data.startswith("step2:"):
+            page = int(data.split(":")[1])
+            await render_step2(context, chat_id, page)
+            return
 
-    if data.startswith("req:"):
-        page = int(data.split(":")[1])
-        await render_requirements(query, page)
-        return
+        if data.startswith("step3:"):
+            await render_step3(context, chat_id)
+            return
 
-    if data.startswith("step1:"):
-        page = int(data.split(":")[1])
-        await render_step1(query, page)
-        return
+        if data.startswith("step4:"):
+            await render_step4(context, chat_id)
+            return
 
-    if data.startswith("access:"):
-        page = int(data.split(":")[1])
-        await render_access(query, page)
-        return
+        if data.startswith("step5:"):
+            page = int(data.split(":")[1])
+            await render_step5(context, chat_id, page)
+            return
 
-    if data == "access_wait":
-        await render_access_wait(query)
-        return
-
-    if data.startswith("step2:"):
-        page = int(data.split(":")[1])
-        await render_step2(query, page)
-        return
-
-    if data.startswith("step3:"):
-        await render_step3(query, 1)
-        return
-
-    if data.startswith("step4:"):
-        await render_step4(query, 1)
-        return
-
-    if data.startswith("step5:"):
-        page = int(data.split(":")[1])
-        await render_step5(query, page)
-        return
+    finally:
+        release_ui_lock(user_id)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # АДМИН-КОМАНДЫ
@@ -1504,6 +1473,7 @@ async def cmd_state(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"submitted_requests: <code>{len(submitted_requests)}</code>\n"
         f"active_support_chats: <code>{len(active_support_chats)}</code>\n"
         f"blocked_users: <code>{len(blocked_users)}</code>\n"
+        f"ui_messages: <code>{len(user_ui_message_ids)}</code>\n"
         f"cooldown: <code>{USER_MESSAGE_COOLDOWN}</code>\n"
         f"text_group: <code>{ADMIN_TEXT_CHANNEL_ID}</code>\n"
         f"photo_group: <code>{ADMIN_PHOTO_CHANNEL_ID}</code>\n"
