@@ -1,5 +1,9 @@
 import os
+import re
+import json
+import time
 import logging
+from pathlib import Path
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -15,12 +19,18 @@ from telegram.ext import (
     ContextTypes,
 )
 
-# ─── НАСТРОЙКИ (Railway Variables / ENV) ─────────────────────────────────────
+# ─── НАСТРОЙКИ ────────────────────────────────────────────────────────────────
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+
 ADMIN_ID = int(os.getenv("ADMIN_ID", "8197197463"))
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "sunrisseq")  # БЕЗ @
 
-ADMIN_CHANNEL_ID = int(os.getenv("ADMIN_CHANNEL_ID", "-1001234567890"))
+# Группа/канал поддержки (сюда идут ТЕКСТ / ФОТО / ФАЙЛЫ для обычного чата)
+ADMIN_TEXT_CHANNEL_ID = int(os.getenv("ADMIN_TEXT_CHANNEL_ID", "-1003842776546"))
+
+# Группа/канал заявок (сюда идут только скрины на модерацию после "Получить доступ")
+ADMIN_PHOTO_CHANNEL_ID = int(os.getenv("ADMIN_PHOTO_CHANNEL_ID", "-1003907521717"))
+
 REVIEWS_CHANNEL_USERNAME = os.getenv("REVIEWS_CHANNEL_USERNAME", "@your_reviews_channel")
 REVIEWS_CHANNEL_LINK = os.getenv("REVIEWS_CHANNEL_LINK", "https://t.me/your_reviews_channel")
 
@@ -34,6 +44,12 @@ STEP3_IMAGE_3 = os.getenv("STEP3_IMAGE_3", "")
 
 ACCESS_IMAGE_1 = os.getenv("ACCESS_IMAGE_1", "")
 ACCESS_IMAGE_2 = os.getenv("ACCESS_IMAGE_2", "")
+
+STATE_FILE = os.getenv("STATE_FILE", "bot_state.json")
+
+# Антиспам
+USER_MESSAGE_COOLDOWN = int(os.getenv("USER_MESSAGE_COOLDOWN", "6"))
+
 # ──────────────────────────────────────────────────────────────────────────────
 
 logging.basicConfig(
@@ -43,17 +59,49 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ─── СОСТОЯНИЯ ────────────────────────────────────────────────────────────────
-waiting_for_photo: set[int] = set()
-submitted_requests: set[int] = set()
+waiting_for_photo: set[int] = set()      # ждём скрин после "Получить доступ"
+submitted_requests: set[int] = set()     # скрин уже отправлен на модерацию
+active_support_chats: set[int] = set()   # пользователь в активном чате с поддержкой
+blocked_users: set[int] = set()          # заблокированные пользователи
 
-# Пользователи в активном чате с поддержкой
-active_support_chats: set[int] = set()
+# user_id -> last unix time
+user_last_message_time: dict[int, float] = {}
 
-# Заблокированные пользователи
-blocked_users: set[int] = set()
+# ─── PERSISTENCE JSON ─────────────────────────────────────────────────────────
 
-# Пользователи, которым уже показали "Вы в чате с админом"
-support_intro_sent: set[int] = set()
+def save_state():
+    try:
+        data = {
+            "waiting_for_photo": list(waiting_for_photo),
+            "submitted_requests": list(submitted_requests),
+            "active_support_chats": list(active_support_chats),
+            "blocked_users": list(blocked_users),
+        }
+        with open(STATE_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        logger.info("Состояние сохранено.")
+    except Exception as e:
+        logger.error(f"Ошибка сохранения состояния: {e}")
+
+def load_state():
+    global waiting_for_photo, submitted_requests, active_support_chats, blocked_users
+
+    try:
+        if not Path(STATE_FILE).exists():
+            logger.info("Файл состояния не найден, стартуем с пустого.")
+            return
+
+        with open(STATE_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        waiting_for_photo = set(map(int, data.get("waiting_for_photo", [])))
+        submitted_requests = set(map(int, data.get("submitted_requests", [])))
+        active_support_chats = set(map(int, data.get("active_support_chats", [])))
+        blocked_users = set(map(int, data.get("blocked_users", [])))
+
+        logger.info("Состояние загружено.")
+    except Exception as e:
+        logger.error(f"Ошибка загрузки состояния: {e}")
 
 # ─── ТЕКСТЫ ───────────────────────────────────────────────────────────────────
 
@@ -71,22 +119,16 @@ FAQ_TEXT = """
 ❓ <b>Часто задаваемые вопросы о Starlink</b>
 
 <b>Что такое Starlink?</b>
-Starlink — система спутникового интернета от компании SpaceX (Илон Маск). Сотни спутников на низкой орбите обеспечивают покрытие по всему миру. Скорость — до 200 Мбит/с, пинг — от 20 мс.
+Starlink — система спутникового интернета от компании SpaceX. Спутники на низкой орбите обеспечивают покрытие по всему миру.
 
 <b>Для кого это?</b>
 • 🏕 Туристы и путешественники
-• 🚗 Дальнобойщики и автопутешественники
+• 🚗 Автопутешественники
 • 🌾 Жители сёл и дач
 • ⚡ Те, кто устал от плохого интернета
 
 <b>Как это работает?</b>
-Ты устанавливаешь небольшую тарелку → она ловит сигнал со спутников → ты получаешь стабильный интернет. Всё управление через приложение на телефоне.
-
-<b>Нужен ли договор с оператором?</b>
-Нет. Starlink работает напрямую через SpaceX, без посредников.
-
-<b>Где работает?</b>
-В большинстве стран мира. В движении, на природе, дома — везде где есть небо над головой.
+Небольшая тарелка ловит сигнал со спутников → ты получаешь стабильный интернет. Всё управление через приложение.
 
 💡 Хочешь узнать как установить? Нажми кнопку ниже 👇
 """
@@ -166,7 +208,7 @@ STEP_3_TEXT = """
 
 После входа в приложение:
 • Открой настройки
-• Найди доступную сеть Starlink
+• Найди доступную сеть
 • Подключись к Wi-Fi
 • Дождись стабильного соединения
 """
@@ -193,12 +235,6 @@ PHOTO_REJECTED_TEXT = """
 ❌ <b>Поддержка не одобрила ваше фото.</b>
 
 Если это ошибка — отправьте более чёткое фото / скрин ещё раз.
-"""
-
-WRONG_INPUT_TEXT = """
-🤔 Не понял тебя.
-
-Используй кнопки меню или просто отправь фото / скрин по инструкции.
 """
 
 ACCESS_PANEL_TEXT = """
@@ -231,6 +267,10 @@ SUPPORT_BLOCKED_TEXT = """
 
 SUPPORT_CLOSED_TEXT = """
 🔒 <b>Чат с поддержкой завершён.</b>
+"""
+
+SPAM_WAIT_TEXT = f"""
+⏳ <b>Подожди {USER_MESSAGE_COOLDOWN} сек перед следующим сообщением.</b>
 """
 
 # ─── КЛАВИАТУРЫ ───────────────────────────────────────────────────────────────
@@ -326,79 +366,141 @@ def build_user_info(update: Update) -> tuple[int, str, str]:
     full_name = update.effective_user.full_name
     return user_id, safe_username(username), full_name
 
+def is_user_rate_limited(user_id: int) -> bool:
+    if user_id == ADMIN_ID:
+        return False
+
+    now = time.time()
+    last_ts = user_last_message_time.get(user_id)
+
+    if last_ts is not None and (now - last_ts) < USER_MESSAGE_COOLDOWN:
+        return True
+
+    user_last_message_time[user_id] = now
+    return False
+
+async def send_rate_limit_warning(update: Update):
+    try:
+        await update.message.reply_text(SPAM_WAIT_TEXT, parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Ошибка антиспам-уведомления: {e}")
+
+def extract_user_id_from_text(text: str | None) -> int | None:
+    """
+    Ищет user_id в тексте вида:
+    🆔 123456789
+    🆔 <code>123456789</code>
+    """
+    if not text:
+        return None
+
+    patterns = [
+        r"🆔\s*<code>(\d+)</code>",
+        r"🆔\s*(\d+)",
+    ]
+
+    for pattern in patterns:
+        m = re.search(pattern, text)
+        if m:
+            try:
+                return int(m.group(1))
+            except Exception:
+                return None
+    return None
+
+def resolve_target_id_from_reply(update: Update) -> int | None:
+    """
+    Достаёт ID из reply_to_message (текст или caption)
+    """
+    if not update.message or not update.message.reply_to_message:
+        return None
+
+    replied = update.message.reply_to_message
+
+    if replied.caption:
+        uid = extract_user_id_from_text(replied.caption)
+        if uid:
+            return uid
+
+    if replied.text:
+        uid = extract_user_id_from_text(replied.text)
+        if uid:
+            return uid
+
+    return None
+
+def parse_r_text_args(update: Update, context: ContextTypes.DEFAULT_TYPE) -> tuple[int | None, str]:
+    """
+    /r 123 текст
+    или reply на сообщение + /r текст
+    """
+    if context.args:
+        first = context.args[0]
+        if first.isdigit():
+            target_id = int(first)
+            reply_text = " ".join(context.args[1:]).strip()
+            return target_id, reply_text
+
+    target_id = resolve_target_id_from_reply(update)
+    reply_text = " ".join(context.args).strip() if context.args else ""
+    return target_id, reply_text
+
+def parse_r_media_caption(caption: str) -> tuple[int | None, str]:
+    """
+    Поддержка:
+    /r 123 текст
+    /r текст   (если media отправлен reply'ем)
+    """
+    if not caption:
+        return None, ""
+
+    if not caption.strip().startswith("/r"):
+        return None, ""
+
+    # убираем /r
+    body = caption.strip()[2:].strip()
+    if not body:
+        return None, ""
+
+    parts = body.split(maxsplit=1)
+
+    if parts[0].isdigit():
+        target_id = int(parts[0])
+        reply_text = parts[1] if len(parts) > 1 else ""
+        return target_id, reply_text
+
+    # если ID нет, значит это текст, а ID берём из reply_to_message
+    return None, body
+
+def get_target_id_for_r_media(update: Update) -> tuple[int | None, str]:
+    caption = update.message.caption or ""
+    explicit_id, reply_text = parse_r_media_caption(caption)
+
+    if explicit_id:
+        return explicit_id, reply_text
+
+    reply_target = resolve_target_id_from_reply(update)
+    if reply_target:
+        return reply_target, reply_text
+
+    return None, reply_text
+
 async def open_support_chat_for_user(context: ContextTypes.DEFAULT_TYPE, user_id: int):
+    if user_id in active_support_chats:
+        return
+
     active_support_chats.add(user_id)
+    save_state()
 
-    if user_id not in support_intro_sent:
-        try:
-            await context.bot.send_message(
-                chat_id=user_id,
-                text=SUPPORT_OPEN_TEXT,
-                parse_mode="HTML",
-                reply_markup=support_keyboard(),
-            )
-            support_intro_sent.add(user_id)
-        except Exception as e:
-            logger.error(f"Не удалось отправить SUPPORT_OPEN_TEXT пользователю {user_id}: {e}")
-
-async def notify_admin_text(context: ContextTypes.DEFAULT_TYPE, user_id: int, username: str, full_name: str, text: str):
     try:
         await context.bot.send_message(
-            chat_id=ADMIN_ID,
-            text=(
-                f"💬 <b>Сообщение от пользователя</b>\n"
-                f"👤 {full_name} ({username})\n"
-                f"🆔 <code>{user_id}</code>\n\n"
-                f"<i>{text}</i>\n\n"
-                f"✏️ Ответ: <code>/reply {user_id} [текст]</code>\n"
-                f"🔒 Завершить: <code>/close {user_id}</code>\n"
-                f"⛔ Блок: <code>/block {user_id}</code>"
-            ),
+            chat_id=user_id,
+            text=SUPPORT_OPEN_TEXT,
             parse_mode="HTML",
+            reply_markup=support_keyboard(),
         )
     except Exception as e:
-        logger.error(f"Не удалось уведомить админа: {e}")
-
-async def notify_admin_photo(context: ContextTypes.DEFAULT_TYPE, user_id: int, username: str, full_name: str, photo_file_id: str):
-    try:
-        await context.bot.send_photo(
-            chat_id=ADMIN_ID,
-            photo=photo_file_id,
-            caption=(
-                f"📸 <b>Фото от пользователя</b>\n"
-                f"👤 {full_name} ({username})\n"
-                f"🆔 <code>{user_id}</code>\n\n"
-                f"✏️ Ответ: <code>/reply {user_id} [текст]</code>\n"
-                f"📷 Фото: фото + подпись <code>/replyphoto {user_id} [текст]</code>\n"
-                f"📎 Файл: файл + подпись <code>/replydoc {user_id} [текст]</code>\n"
-                f"🔒 Завершить: <code>/close {user_id}</code>\n"
-                f"⛔ Блок: <code>/block {user_id}</code>"
-            )[:1024],
-            parse_mode="HTML",
-        )
-    except Exception as e:
-        logger.error(f"Не удалось переслать фото в админ-чат: {e}")
-
-async def notify_admin_document(context: ContextTypes.DEFAULT_TYPE, user_id: int, username: str, full_name: str, document_file_id: str, file_name: str):
-    try:
-        await context.bot.send_document(
-            chat_id=ADMIN_ID,
-            document=document_file_id,
-            caption=(
-                f"📎 <b>Файл от пользователя</b>\n"
-                f"👤 {full_name} ({username})\n"
-                f"🆔 <code>{user_id}</code>\n"
-                f"📄 <code>{file_name}</code>\n\n"
-                f"✏️ Ответ: <code>/reply {user_id} [текст]</code>\n"
-                f"📷 Фото: фото + подпись <code>/replyphoto {user_id} [текст]</code>\n"
-                f"📎 Файл: файл + подпись <code>/replydoc {user_id} [текст]</code>\n"
-                f"🔒 Завершить: <code>/close {user_id}</code>\n"
-                f"⛔ Блок: <code>/block {user_id}</code>"
-            )[:1024],
-            parse_mode="HTML",
-        )
-    except Exception as e:
-        logger.error(f"Не удалось переслать документ в админ-чат: {e}")
+        logger.error(f"Не удалось открыть чат поддержки для {user_id}: {e}")
 
 async def send_album_with_single_caption(
     chat_id: int,
@@ -423,8 +525,9 @@ async def send_album_with_single_caption(
     try:
         await context.bot.send_media_group(chat_id=chat_id, media=media)
     except Exception as e:
-        logger.error(f"Не удалось отправить media_group: {e}")
+        logger.error(f"Ошибка media_group: {e}")
 
+        # fallback
         for i, image_id in enumerate(valid_images):
             try:
                 if i == 0 and caption:
@@ -432,7 +535,7 @@ async def send_album_with_single_caption(
                 else:
                     await context.bot.send_photo(chat_id=chat_id, photo=image_id)
             except Exception as e2:
-                logger.error(f"Fallback send_photo error for {image_id}: {e2}")
+                logger.error(f"Fallback send_photo error: {e2}")
 
 async def send_access_request_flow(query, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
@@ -463,6 +566,7 @@ async def send_access_request_flow(query, context: ContextTypes.DEFAULT_TYPE):
         return
 
     waiting_for_photo.add(user_id)
+    save_state()
 
     await send_album_with_single_caption(
         chat_id=chat_id,
@@ -498,7 +602,84 @@ async def send_step_album_and_update_panel(
         reply_markup=panel_keyboard,
     )
 
-# ─── ХЕНДЛЕРЫ ─────────────────────────────────────────────────────────────────
+# ─── ОТПРАВКА В ГРУППУ ПОДДЕРЖКИ ─────────────────────────────────────────────
+
+async def forward_user_text_to_support(
+    context: ContextTypes.DEFAULT_TYPE,
+    user_id: int,
+    username: str,
+    full_name: str,
+    text: str,
+):
+    try:
+        await context.bot.send_message(
+            chat_id=ADMIN_TEXT_CHANNEL_ID,
+            text=(
+                f"💬 <b>Сообщение от пользователя</b>\n"
+                f"👤 {full_name} ({username})\n"
+                f"🆔 <code>{user_id}</code>\n\n"
+                f"<i>{text}</i>\n\n"
+                f"Ответьте reply + <code>/r [текст]</code>\n"
+                f"или <code>/close</code> / <code>/block</code>"
+            ),
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        logger.error(f"Не удалось отправить текст в support-группу: {e}")
+
+async def forward_user_photo_to_support(
+    context: ContextTypes.DEFAULT_TYPE,
+    user_id: int,
+    username: str,
+    full_name: str,
+    photo_file_id: str,
+):
+    try:
+        await context.bot.send_photo(
+            chat_id=ADMIN_TEXT_CHANNEL_ID,
+            photo=photo_file_id,
+            caption=(
+                f"📸 <b>Фото от пользователя</b>\n"
+                f"👤 {full_name} ({username})\n"
+                f"🆔 <code>{user_id}</code>\n\n"
+                f"Ответьте reply + текстом <code>/r [текст]</code>\n"
+                f"или reply + фото с подписью <code>/r [текст]</code>\n"
+                f"или reply + файлом с подписью <code>/r [текст]</code>\n"
+                f"<code>/close</code> / <code>/block</code>"
+            )[:1024],
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        logger.error(f"Не удалось отправить фото в support-группу: {e}")
+
+async def forward_user_document_to_support(
+    context: ContextTypes.DEFAULT_TYPE,
+    user_id: int,
+    username: str,
+    full_name: str,
+    document_file_id: str,
+    file_name: str,
+):
+    try:
+        await context.bot.send_document(
+            chat_id=ADMIN_TEXT_CHANNEL_ID,
+            document=document_file_id,
+            caption=(
+                f"📎 <b>Файл от пользователя</b>\n"
+                f"👤 {full_name} ({username})\n"
+                f"🆔 <code>{user_id}</code>\n"
+                f"📄 <code>{file_name}</code>\n\n"
+                f"Ответьте reply + текстом <code>/r [текст]</code>\n"
+                f"или reply + фото с подписью <code>/r [текст]</code>\n"
+                f"или reply + файлом с подписью <code>/r [текст]</code>\n"
+                f"<code>/close</code> / <code>/block</code>"
+            )[:1024],
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        logger.error(f"Не удалось отправить файл в support-группу: {e}")
+
+# ─── ХЕНДЛЕРЫ КНОПОК ──────────────────────────────────────────────────────────
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -512,7 +693,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     clicker_id = query.from_user.id
 
-    # ─── МОДЕРАЦИЯ ФОТО / БЛОК ────────────────────────────────────────────────
+    # Модерация заявок
     if query.data.startswith(("approve:", "reject:", "blockcb:")):
         if clicker_id != ADMIN_ID:
             await query.answer("У вас нет доступа.", show_alert=True)
@@ -528,6 +709,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 submitted_requests.discard(target_id)
                 waiting_for_photo.discard(target_id)
+                save_state()
 
                 await context.bot.send_message(
                     chat_id=target_id,
@@ -548,7 +730,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     else:
                         await query.edit_message_reply_markup(reply_markup=None)
                 except Exception as e:
-                    logger.warning(f"Не удалось обновить сообщение после approve: {e}")
+                    logger.warning(f"Не удалось обновить сообщение approve: {e}")
 
                 await query.answer("Фото одобрено ✅")
             except Exception as e:
@@ -560,6 +742,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 submitted_requests.discard(target_id)
                 waiting_for_photo.discard(target_id)
+                save_state()
 
                 await context.bot.send_message(
                     chat_id=target_id,
@@ -580,7 +763,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     else:
                         await query.edit_message_reply_markup(reply_markup=None)
                 except Exception as e:
-                    logger.warning(f"Не удалось обновить сообщение после reject: {e}")
+                    logger.warning(f"Не удалось обновить сообщение reject: {e}")
 
                 await query.answer("Фото отклонено ❌")
             except Exception as e:
@@ -592,9 +775,9 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 blocked_users.add(target_id)
                 active_support_chats.discard(target_id)
-                support_intro_sent.discard(target_id)
                 waiting_for_photo.discard(target_id)
                 submitted_requests.discard(target_id)
+                save_state()
 
                 await context.bot.send_message(
                     chat_id=target_id,
@@ -608,7 +791,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.answer("Не удалось заблокировать.", show_alert=True)
             return
 
-    # ─── ОБЫЧНЫЕ КНОПКИ ───────────────────────────────────────────────────────
+    # Обычные кнопки
     if query.data == "start":
         await query.edit_message_text(
             WELCOME_TEXT,
@@ -705,25 +888,32 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ─── АДМИН-КОМАНДЫ ───────────────────────────────────────────────────────────
 
-async def cmd_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def cmd_r(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    /r 123 текст
+    или reply на сообщение + /r текст
+    """
     if update.effective_user.id != ADMIN_ID:
         return
 
-    if not context.args or len(context.args) < 2:
+    target_id, reply_text = parse_r_text_args(update, context)
+
+    if not target_id:
         await update.message.reply_text(
             "📝 Формат:\n"
-            "/reply [ID пользователя] [текст]\n\n"
-            "Пример:\n"
-            "/reply 987654321 Привет! Чем могу помочь?"
+            "/r [ID] [текст]\n\n"
+            "или reply на сообщение пользователя:\n"
+            "/r [текст]"
         )
         return
 
-    try:
-        target_id = int(context.args[0])
-        reply_text = " ".join(context.args[1:]).strip()
+    if not reply_text:
+        await update.message.reply_text("❌ Напиши текст ответа.")
+        return
 
+    try:
         if target_id in blocked_users:
-            await update.message.reply_text("⛔ Этот пользователь заблокирован.")
+            await update.message.reply_text("⛔ Пользователь заблокирован.")
             return
 
         await open_support_chat_for_user(context, target_id)
@@ -736,19 +926,112 @@ async def cmd_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(f"✅ Ответ отправлен пользователю {target_id}")
 
-    except ValueError:
-        await update.message.reply_text("❌ Неверный ID.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка: {e}")
+
+async def cmd_close(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    target_id = None
+
+    if context.args and context.args[0].isdigit():
+        target_id = int(context.args[0])
+    else:
+        target_id = resolve_target_id_from_reply(update)
+
+    if not target_id:
+        await update.message.reply_text(
+            "📝 Формат:\n/close [ID]\n\nили reply на сообщение пользователя:\n/close"
+        )
+        return
+
+    try:
+        active_support_chats.discard(target_id)
+        save_state()
+
+        await context.bot.send_message(
+            chat_id=target_id,
+            text=SUPPORT_CLOSED_TEXT,
+            parse_mode="HTML",
+            reply_markup=main_keyboard(),
+        )
+
+        await update.message.reply_text(f"🔒 Чат с пользователем {target_id} завершён.")
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка: {e}")
+
+async def cmd_block(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    target_id = None
+
+    if context.args and context.args[0].isdigit():
+        target_id = int(context.args[0])
+    else:
+        target_id = resolve_target_id_from_reply(update)
+
+    if not target_id:
+        await update.message.reply_text(
+            "📝 Формат:\n/block [ID]\n\nили reply на сообщение пользователя:\n/block"
+        )
+        return
+
+    try:
+        blocked_users.add(target_id)
+        active_support_chats.discard(target_id)
+        waiting_for_photo.discard(target_id)
+        submitted_requests.discard(target_id)
+        save_state()
+
+        await context.bot.send_message(
+            chat_id=target_id,
+            text=SUPPORT_BLOCKED_TEXT,
+            parse_mode="HTML",
+        )
+
+        await update.message.reply_text(f"⛔ Пользователь {target_id} заблокирован.")
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка: {e}")
+
+async def cmd_unblock(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    if not context.args or not context.args[0].isdigit():
+        await update.message.reply_text("📝 Формат:\n/unblock [ID]")
+        return
+
+    target_id = int(context.args[0])
+
+    try:
+        blocked_users.discard(target_id)
+        save_state()
+
+        await context.bot.send_message(
+            chat_id=target_id,
+            text="✅ <b>Доступ к поддержке восстановлен.</b>",
+            parse_mode="HTML",
+            reply_markup=main_keyboard(),
+        )
+
+        await update.message.reply_text(f"✅ Пользователь {target_id} разблокирован.")
+
     except Exception as e:
         await update.message.reply_text(f"❌ Ошибка: {e}")
 
 async def cmd_reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    /reject [ID] [причина]
+    """
     if update.effective_user.id != ADMIN_ID:
         return
 
     if not context.args or len(context.args) < 2:
-        await update.message.reply_text(
-            "📝 Формат:\n/reject [ID] [причина]"
-        )
+        await update.message.reply_text("📝 Формат:\n/reject [ID] [причина]")
         return
 
     try:
@@ -757,6 +1040,7 @@ async def cmd_reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         submitted_requests.discard(target_id)
         waiting_for_photo.discard(target_id)
+        save_state()
 
         await context.bot.send_message(
             chat_id=target_id,
@@ -771,19 +1055,18 @@ async def cmd_reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(f"✅ Отклонение отправлено {target_id}")
 
-    except ValueError:
-        await update.message.reply_text("❌ Неверный ID.")
     except Exception as e:
         await update.message.reply_text(f"❌ Ошибка: {e}")
 
 async def cmd_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    /approve [ID] [текст]
+    """
     if update.effective_user.id != ADMIN_ID:
         return
 
     if not context.args or len(context.args) < 2:
-        await update.message.reply_text(
-            "📝 Формат:\n/approve [ID] [текст]"
-        )
+        await update.message.reply_text("📝 Формат:\n/approve [ID] [текст]")
         return
 
     try:
@@ -791,11 +1074,12 @@ async def cmd_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
         custom_text = " ".join(context.args[1:]).strip()
 
         if target_id in blocked_users:
-            await update.message.reply_text("⛔ Этот пользователь заблокирован.")
+            await update.message.reply_text("⛔ Пользователь заблокирован.")
             return
 
         submitted_requests.discard(target_id)
         waiting_for_photo.discard(target_id)
+        save_state()
 
         await open_support_chat_for_user(context, target_id)
 
@@ -808,95 +1092,25 @@ async def cmd_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(f"✅ Одобрение отправлено {target_id}")
 
-    except ValueError:
-        await update.message.reply_text("❌ Неверный ID.")
     except Exception as e:
         await update.message.reply_text(f"❌ Ошибка: {e}")
 
-async def cmd_close(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def cmd_state(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
 
-    if not context.args:
-        await update.message.reply_text("📝 Формат:\n/close [ID]")
-        return
-
-    try:
-        target_id = int(context.args[0])
-
-        active_support_chats.discard(target_id)
-        support_intro_sent.discard(target_id)
-
-        await context.bot.send_message(
-            chat_id=target_id,
-            text=SUPPORT_CLOSED_TEXT,
-            parse_mode="HTML",
-            reply_markup=main_keyboard(),
-        )
-
-        await update.message.reply_text(f"🔒 Чат с пользователем {target_id} завершён.")
-
-    except ValueError:
-        await update.message.reply_text("❌ Неверный ID.")
-    except Exception as e:
-        await update.message.reply_text(f"❌ Ошибка: {e}")
-
-async def cmd_block(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        return
-
-    if not context.args:
-        await update.message.reply_text("📝 Формат:\n/block [ID]")
-        return
-
-    try:
-        target_id = int(context.args[0])
-
-        blocked_users.add(target_id)
-        active_support_chats.discard(target_id)
-        support_intro_sent.discard(target_id)
-        waiting_for_photo.discard(target_id)
-        submitted_requests.discard(target_id)
-
-        await context.bot.send_message(
-            chat_id=target_id,
-            text=SUPPORT_BLOCKED_TEXT,
-            parse_mode="HTML",
-        )
-
-        await update.message.reply_text(f"⛔ Пользователь {target_id} заблокирован.")
-
-    except ValueError:
-        await update.message.reply_text("❌ Неверный ID.")
-    except Exception as e:
-        await update.message.reply_text(f"❌ Ошибка: {e}")
-
-async def cmd_unblock(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        return
-
-    if not context.args:
-        await update.message.reply_text("📝 Формат:\n/unblock [ID]")
-        return
-
-    try:
-        target_id = int(context.args[0])
-
-        blocked_users.discard(target_id)
-
-        await context.bot.send_message(
-            chat_id=target_id,
-            text="✅ <b>Доступ к поддержке восстановлен.</b>",
-            parse_mode="HTML",
-            reply_markup=main_keyboard(),
-        )
-
-        await update.message.reply_text(f"✅ Пользователь {target_id} разблокирован.")
-
-    except ValueError:
-        await update.message.reply_text("❌ Неверный ID.")
-    except Exception as e:
-        await update.message.reply_text(f"❌ Ошибка: {e}")
+    await update.message.reply_text(
+        "📊 <b>Состояние бота</b>\n\n"
+        f"waiting_for_photo: <code>{len(waiting_for_photo)}</code>\n"
+        f"submitted_requests: <code>{len(submitted_requests)}</code>\n"
+        f"active_support_chats: <code>{len(active_support_chats)}</code>\n"
+        f"blocked_users: <code>{len(blocked_users)}</code>\n"
+        f"cooldown: <code>{USER_MESSAGE_COOLDOWN}</code>\n"
+        f"text_group: <code>{ADMIN_TEXT_CHANNEL_ID}</code>\n"
+        f"photo_group: <code>{ADMIN_PHOTO_CHANNEL_ID}</code>\n"
+        f"state_file: <code>{STATE_FILE}</code>",
+        parse_mode="HTML",
+    )
 
 async def cmd_getfileid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
@@ -920,9 +1134,14 @@ async def cmd_getfileid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML"
     )
 
-# ─── АДМИН: ОТПРАВИТЬ СВОЁ ФОТО ──────────────────────────────────────────────
+# ─── АДМИН: ОТВЕТ МЕДИА ЧЕРЕЗ /r ─────────────────────────────────────────────
 
-async def admin_reply_photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def admin_r_photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Фото + подпись:
+    /r 123 текст
+    или reply на сообщение + фото с подписью /r текст
+    """
     if update.effective_user.id != ADMIN_ID:
         return
 
@@ -935,21 +1154,26 @@ async def admin_reply_photo_handler(update: Update, context: ContextTypes.DEFAUL
         return
 
     if not update.message.photo:
-        await update.message.reply_text("❌ Прикрепи фото с подписью: /replyphoto [ID] [текст]")
-        return
-
-    parts = caption.split(maxsplit=2)
-
-    if len(parts) < 2:
-        await update.message.reply_text("📝 Формат: /replyphoto [ID] [текст]")
         return
 
     try:
-        target_id = int(parts[1])
-        reply_text = parts[2] if len(parts) > 2 else "📸 Сообщение от поддержки"
+        target_id, reply_text = get_target_id_for_r_media(update)
+
+        if not target_id:
+            await update.message.reply_text(
+                "📝 Формат:\n"
+                "1) Фото + подпись: /r [ID] [текст]\n"
+                "или\n"
+                "2) Reply на сообщение пользователя + фото с подписью:\n"
+                "/r [текст]"
+            )
+            return
+
+        if not reply_text:
+            reply_text = "📸 Сообщение от поддержки"
 
         if target_id in blocked_users:
-            await update.message.reply_text("⛔ Этот пользователь заблокирован.")
+            await update.message.reply_text("⛔ Пользователь заблокирован.")
             return
 
         await open_support_chat_for_user(context, target_id)
@@ -965,14 +1189,15 @@ async def admin_reply_photo_handler(update: Update, context: ContextTypes.DEFAUL
 
         await update.message.reply_text(f"✅ Фото отправлено пользователю {target_id}")
 
-    except ValueError:
-        await update.message.reply_text("❌ Неверный ID.")
     except Exception as e:
         await update.message.reply_text(f"❌ Ошибка: {e}")
 
-# ─── АДМИН: ОТПРАВИТЬ СВОЙ ФАЙЛ / ДОКУМЕНТ ───────────────────────────────────
-
-async def admin_reply_document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def admin_r_document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Файл + подпись:
+    /r 123 текст
+    или reply на сообщение + файл с подписью /r текст
+    """
     if update.effective_user.id != ADMIN_ID:
         return
 
@@ -985,21 +1210,26 @@ async def admin_reply_document_handler(update: Update, context: ContextTypes.DEF
         return
 
     if not update.message.document:
-        await update.message.reply_text("❌ Прикрепи файл с подписью: /replydoc [ID] [текст]")
-        return
-
-    parts = caption.split(maxsplit=2)
-
-    if len(parts) < 2:
-        await update.message.reply_text("📝 Формат: /replydoc [ID] [текст]")
         return
 
     try:
-        target_id = int(parts[1])
-        reply_text = parts[2] if len(parts) > 2 else "📎 Сообщение от поддержки"
+        target_id, reply_text = get_target_id_for_r_media(update)
+
+        if not target_id:
+            await update.message.reply_text(
+                "📝 Формат:\n"
+                "1) Файл + подпись: /r [ID] [текст]\n"
+                "или\n"
+                "2) Reply на сообщение пользователя + файл с подписью:\n"
+                "/r [текст]"
+            )
+            return
+
+        if not reply_text:
+            reply_text = "📎 Сообщение от поддержки"
 
         if target_id in blocked_users:
-            await update.message.reply_text("⛔ Этот пользователь заблокирован.")
+            await update.message.reply_text("⛔ Пользователь заблокирован.")
             return
 
         await open_support_chat_for_user(context, target_id)
@@ -1015,28 +1245,29 @@ async def admin_reply_document_handler(update: Update, context: ContextTypes.DEF
 
         await update.message.reply_text(f"✅ Файл отправлен пользователю {target_id}")
 
-    except ValueError:
-        await update.message.reply_text("❌ Неверный ID.")
     except Exception as e:
         await update.message.reply_text(f"❌ Ошибка: {e}")
 
-# ─── ОБЫЧНЫЕ ТЕКСТЫ ОТ ПОЛЬЗОВАТЕЛЕЙ ─────────────────────────────────────────
+# ─── ПОЛЬЗОВАТЕЛЬСКИЕ ТЕКСТЫ ──────────────────────────────────────────────────
 
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id, username, full_name = build_user_info(update)
     text = update.message.text if update.message.text else ""
 
+    # Игнорим команды админа
     if user_id == ADMIN_ID and text.startswith("/"):
         return
 
     if user_id in blocked_users:
-        await update.message.reply_text(
-            SUPPORT_BLOCKED_TEXT,
-            parse_mode="HTML",
-        )
+        await update.message.reply_text(SUPPORT_BLOCKED_TEXT, parse_mode="HTML")
         return
 
-    # Если ждём фото — текст не принимаем
+    # антиспам
+    if is_user_rate_limited(user_id):
+        await send_rate_limit_warning(update)
+        return
+
+    # если ждём именно фото/скрин
     if user_id in waiting_for_photo:
         await update.message.reply_text(
             "📸 Жду именно <b>фото / скрин</b>, не текст! Прикрепи изображение.",
@@ -1044,214 +1275,206 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Активный чат с поддержкой
-    if user_id in active_support_chats:
-        await notify_admin_text(context, user_id, username, full_name, text)
-        return
+    # любой текст = поддержка
+    await forward_user_text_to_support(context, user_id, username, full_name, text)
 
-    # Если пользователь нажал поддержку/хочет написать впервые — просто передаём админу
-    if user_id != ADMIN_ID:
-        await notify_admin_text(context, user_id, username, full_name, text)
+    # если чат ещё не открыт — просто уведомляем пользователя
+    if user_id not in active_support_chats:
+        await update.message.reply_text(
+            "💬 <b>Сообщение отправлено в поддержку.</b>\n\nОжидайте ответа администратора.",
+            parse_mode="HTML",
+            reply_markup=support_keyboard(),
+        )
 
-    await update.message.reply_text(
-        "💬 <b>Сообщение отправлено в поддержку.</b>\n\nОжидайте ответа администратора.",
-        parse_mode="HTML",
-        reply_markup=support_keyboard(),
-    )
-
-# ─── ОБРАБОТКА ПОЛЬЗОВАТЕЛЬСКОГО ФОТО ────────────────────────────────────────
+# ─── ПОЛЬЗОВАТЕЛЬСКИЕ ФОТО ────────────────────────────────────────────────────
 
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id, username, full_name = build_user_info(update)
 
-    # Админ прислал фото без /replyphoto
+    # если это админ шлёт фото с подписью /r
     if user_id == ADMIN_ID:
         await update.message.reply_text(
-            "📸 Для отправки фото пользователю:\n<code>/replyphoto [ID] [текст]</code>\n\n"
-            "Или подпись <code>/getfileid</code> для file_id",
+            "📸 Для ответа пользователю:\n"
+            "Reply на сообщение пользователя + фото с подписью:\n"
+            "<code>/r [текст]</code>\n\n"
+            "или напрямую:\n"
+            "<code>/r [ID] [текст]</code>\n\n"
+            "или подпись <code>/getfileid</code>",
             parse_mode="HTML",
         )
         return
 
     if user_id in blocked_users:
-        await update.message.reply_text(
-            SUPPORT_BLOCKED_TEXT,
-            parse_mode="HTML",
-        )
+        await update.message.reply_text(SUPPORT_BLOCKED_TEXT, parse_mode="HTML")
         return
 
-    # Если пользователь в активном чате — фото уходит админу как чат
-    if user_id in active_support_chats:
+    # антиспам
+    if is_user_rate_limited(user_id):
+        await send_rate_limit_warning(update)
+        return
+
+    # РЕЖИМ ЗАЯВКИ ПОСЛЕ "ПОЛУЧИТЬ ДОСТУП"
+    if user_id in waiting_for_photo:
+        if user_id in submitted_requests:
+            await update.message.reply_text(ALREADY_SUBMITTED_TEXT, parse_mode="HTML")
+            return
+
+        waiting_for_photo.discard(user_id)
+        submitted_requests.add(user_id)
+        save_state()
+
         try:
-            await notify_admin_photo(context, user_id, username, full_name, update.message.photo[-1].file_id)
-            await update.message.reply_text("📨 Фото отправлено в поддержку.")
+            photo = update.message.photo[-1].file_id
+
+            caption = (
+                f"📸 <b>Фото на модерацию</b>\n"
+                f"👤 {full_name} ({username})\n"
+                f"🆔 <code>{user_id}</code>\n\n"
+                f"Ниже кнопки: одобрить / отклонить / блок"
+            )
+
+            await context.bot.send_photo(
+                chat_id=ADMIN_PHOTO_CHANNEL_ID,
+                photo=photo,
+                caption=caption[:1024],
+                parse_mode="HTML",
+                reply_markup=photo_moderation_keyboard(user_id),
+            )
+
+            await update.message.reply_text(
+                PHOTO_RECEIVED_TEXT,
+                parse_mode="HTML",
+                reply_markup=main_keyboard()
+            )
+
         except Exception as e:
-            logger.error(f"Ошибка пересылки фото в активном чате: {e}")
+            logger.error(f"Ошибка отправки фото на модерацию: {e}")
+            submitted_requests.discard(user_id)
+            save_state()
+            await update.message.reply_text("❌ Ошибка при обработке фото. Попробуйте позже.")
         return
 
-    # Уже отправил заявку
-    if user_id in submitted_requests:
-        await update.message.reply_text(
-            ALREADY_SUBMITTED_TEXT,
-            parse_mode="HTML",
-        )
-        return
-
-    # Не нажал "Получить доступ"
-    if user_id not in waiting_for_photo:
-        await update.message.reply_text(
-            "🤔 Сначала нажми кнопку <b>«Получить доступ»</b> в инструкции.",
-            parse_mode="HTML",
-            reply_markup=main_keyboard(),
-        )
-        return
-
-    # Режим заявки
-    waiting_for_photo.discard(user_id)
-    submitted_requests.add(user_id)
-
+    # ИНАЧЕ ЭТО ОБЫЧНОЕ ФОТО В ПОДДЕРЖКУ
     try:
-        photo = update.message.photo[-1].file_id
-
-        caption = (
-            f"📸 <b>Фото от пользователя</b>\n"
-            f"👤 {full_name} ({username})\n"
-            f"🆔 <code>{user_id}</code>\n\n"
-            f"✏️ Ответ: <code>/reply {user_id} [текст]</code>\n"
-            f"📷 Фото: <code>/replyphoto {user_id} [текст]</code>\n"
-            f"📎 Файл: <code>/replydoc {user_id} [текст]</code>\n"
-            f"🔒 Закрыть чат: <code>/close {user_id}</code>\n"
-            f"⛔ Блок: <code>/block {user_id}</code>"
+        await forward_user_photo_to_support(
+            context,
+            user_id,
+            username,
+            full_name,
+            update.message.photo[-1].file_id
         )
 
-        await context.bot.send_photo(
-            chat_id=ADMIN_CHANNEL_ID,
-            photo=photo,
-            caption=caption[:1024],
-            parse_mode="HTML",
-            reply_markup=photo_moderation_keyboard(user_id),
-        )
-
+        if user_id not in active_support_chats:
+            await update.message.reply_text(
+                "📨 <b>Фото отправлено в поддержку.</b>",
+                parse_mode="HTML",
+                reply_markup=support_keyboard(),
+            )
     except Exception as e:
-        logger.error(f"Не удалось отправить фото в админ-канал: {e}")
-        submitted_requests.discard(user_id)
+        logger.error(f"Ошибка отправки фото в поддержку: {e}")
+        await update.message.reply_text("❌ Не удалось отправить фото в поддержку.")
 
-        await update.message.reply_text(
-            "❌ Ошибка при обработке фото. Попробуйте ещё раз позже.",
-            reply_markup=main_keyboard(),
-        )
-        return
+# ─── ПОЛЬЗОВАТЕЛЬСКИЕ ФАЙЛЫ / СКРИНЫ ─────────────────────────────────────────
 
-    await update.message.reply_text(
-        PHOTO_RECEIVED_TEXT,
-        parse_mode="HTML",
-        reply_markup=main_keyboard()
-    )
-
-# ─── ОБРАБОТКА ПОЛЬЗОВАТЕЛЬСКОГО СКРИНА КАК FILE/DOCUMENT ────────────────────
-
-async def document_image_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id, username, full_name = build_user_info(update)
 
-    # Админ прислал документ без /replydoc
+    # если это админ шлёт файл с подписью /r
     if user_id == ADMIN_ID:
         await update.message.reply_text(
-            "📎 Для отправки файла пользователю:\n<code>/replydoc [ID] [текст]</code>\n\n"
-            "Или подпись <code>/getfileid</code> для file_id",
+            "📎 Для ответа пользователю:\n"
+            "Reply на сообщение пользователя + файл с подписью:\n"
+            "<code>/r [текст]</code>\n\n"
+            "или напрямую:\n"
+            "<code>/r [ID] [текст]</code>\n\n"
+            "или подпись <code>/getfileid</code>",
             parse_mode="HTML",
         )
         return
 
     if user_id in blocked_users:
-        await update.message.reply_text(
-            SUPPORT_BLOCKED_TEXT,
-            parse_mode="HTML",
-        )
+        await update.message.reply_text(SUPPORT_BLOCKED_TEXT, parse_mode="HTML")
         return
 
-    # Активный чат — документ уходит админу
-    if user_id in active_support_chats:
-        try:
-            file_name = update.message.document.file_name or "file"
-            await notify_admin_document(
-                context,
-                user_id,
-                username,
-                full_name,
-                update.message.document.file_id,
-                file_name
+    # антиспам
+    if is_user_rate_limited(user_id):
+        await send_rate_limit_warning(update)
+        return
+
+    file_name = update.message.document.file_name or "file"
+
+    # Если ждём фото/скрин на модерацию — принимаем только image-документы как скрин
+    if user_id in waiting_for_photo:
+        if user_id in submitted_requests:
+            await update.message.reply_text(ALREADY_SUBMITTED_TEXT, parse_mode="HTML")
+            return
+
+        if not update.message.document.mime_type or not update.message.document.mime_type.startswith("image/"):
+            await update.message.reply_text(
+                "📸 Для заявки нужен именно <b>скрин / фото</b> (изображение), а не обычный файл.",
+                parse_mode="HTML",
             )
-            await update.message.reply_text("📨 Файл отправлен в поддержку.")
+            return
+
+        waiting_for_photo.discard(user_id)
+        submitted_requests.add(user_id)
+        save_state()
+
+        try:
+            document = update.message.document.file_id
+
+            await context.bot.send_document(
+                chat_id=ADMIN_PHOTO_CHANNEL_ID,
+                document=document,
+                caption=(
+                    f"🖼 <b>Скрин на модерацию</b>\n"
+                    f"👤 {full_name} ({username})\n"
+                    f"🆔 <code>{user_id}</code>\n"
+                    f"📄 <code>{file_name}</code>"
+                )[:1024],
+                parse_mode="HTML",
+            )
+
+            await context.bot.send_message(
+                chat_id=ADMIN_PHOTO_CHANNEL_ID,
+                text=f"🛠 Модерация для пользователя <code>{user_id}</code>",
+                parse_mode="HTML",
+                reply_markup=photo_moderation_keyboard(user_id),
+            )
+
+            await update.message.reply_text(
+                PHOTO_RECEIVED_TEXT,
+                parse_mode="HTML",
+                reply_markup=main_keyboard()
+            )
+
         except Exception as e:
-            logger.error(f"Ошибка пересылки файла в активном чате: {e}")
+            logger.error(f"Ошибка отправки image-doc на модерацию: {e}")
+            submitted_requests.discard(user_id)
+            save_state()
+            await update.message.reply_text("❌ Ошибка при обработке файла. Попробуйте позже.")
         return
 
-    # Уже отправил заявку
-    if user_id in submitted_requests:
-        await update.message.reply_text(
-            ALREADY_SUBMITTED_TEXT,
-            parse_mode="HTML",
-        )
-        return
-
-    # Не нажал "Получить доступ"
-    if user_id not in waiting_for_photo:
-        await update.message.reply_text(
-            "🤔 Сначала нажми кнопку <b>«Получить доступ»</b> в инструкции.",
-            parse_mode="HTML",
-            reply_markup=main_keyboard(),
-        )
-        return
-
-    # Режим заявки
-    waiting_for_photo.discard(user_id)
-    submitted_requests.add(user_id)
-
+    # ИНАЧЕ ЭТО ОБЫЧНЫЙ ФАЙЛ В ПОДДЕРЖКУ
     try:
-        document = update.message.document.file_id
-        file_name = update.message.document.file_name or "image_file"
-
-        caption = (
-            f"🖼 <b>Скрин/файл от пользователя</b>\n"
-            f"👤 {full_name} ({username})\n"
-            f"🆔 <code>{user_id}</code>\n"
-            f"📄 <code>{file_name}</code>\n\n"
-            f"✏️ Ответ: <code>/reply {user_id} [текст]</code>\n"
-            f"📷 Фото: <code>/replyphoto {user_id} [текст]</code>\n"
-            f"📎 Файл: <code>/replydoc {user_id} [текст]</code>\n"
-            f"🔒 Закрыть чат: <code>/close {user_id}</code>\n"
-            f"⛔ Блок: <code>/block {user_id}</code>"
+        await forward_user_document_to_support(
+            context,
+            user_id,
+            username,
+            full_name,
+            update.message.document.file_id,
+            file_name
         )
 
-        await context.bot.send_document(
-            chat_id=ADMIN_CHANNEL_ID,
-            document=document,
-            caption=caption[:1024],
-            parse_mode="HTML",
-        )
-
-        await context.bot.send_message(
-            chat_id=ADMIN_CHANNEL_ID,
-            text=f"🛠 Модерация для пользователя <code>{user_id}</code>",
-            parse_mode="HTML",
-            reply_markup=photo_moderation_keyboard(user_id),
-        )
-
+        if user_id not in active_support_chats:
+            await update.message.reply_text(
+                "📨 <b>Файл отправлен в поддержку.</b>",
+                parse_mode="HTML",
+                reply_markup=support_keyboard(),
+            )
     except Exception as e:
-        logger.error(f"Не удалось отправить document image в админ-канал: {e}")
-        submitted_requests.discard(user_id)
-
-        await update.message.reply_text(
-            "❌ Ошибка при обработке файла. Попробуйте ещё раз позже.",
-            reply_markup=main_keyboard(),
-        )
-        return
-
-    await update.message.reply_text(
-        PHOTO_RECEIVED_TEXT,
-        parse_mode="HTML",
-        reply_markup=main_keyboard()
-    )
+        logger.error(f"Ошибка отправки файла в поддержку: {e}")
+        await update.message.reply_text("❌ Не удалось отправить файл в поддержку.")
 
 # ─── ЗАПУСК ───────────────────────────────────────────────────────────────────
 
@@ -1259,45 +1482,48 @@ def main():
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN не найден. Добавь переменную BOT_TOKEN в Railway Variables.")
 
+    load_state()
+
     app = Application.builder().token(BOT_TOKEN).build()
 
     # Команды
     app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(CommandHandler("reply", cmd_reply))
-    app.add_handler(CommandHandler("reject", cmd_reject))
-    app.add_handler(CommandHandler("approve", cmd_approve))
+    app.add_handler(CommandHandler("r", cmd_r))
     app.add_handler(CommandHandler("close", cmd_close))
     app.add_handler(CommandHandler("block", cmd_block))
     app.add_handler(CommandHandler("unblock", cmd_unblock))
+    app.add_handler(CommandHandler("reject", cmd_reject))
+    app.add_handler(CommandHandler("approve", cmd_approve))
+    app.add_handler(CommandHandler("state", cmd_state))
     app.add_handler(CommandHandler("getfileid", cmd_getfileid))
 
     # Кнопки
     app.add_handler(CallbackQueryHandler(callback_handler))
 
-    # Админ фото/файлы с командами
+    # Админ: фото/файл с подписью /r
     app.add_handler(MessageHandler(
-        filters.PHOTO & filters.CaptionRegex(r"^/replyphoto\b"),
-        admin_reply_photo_handler
+        filters.PHOTO & filters.CaptionRegex(r"^/r\b"),
+        admin_r_photo_handler
     ))
 
     app.add_handler(MessageHandler(
         filters.PHOTO & filters.CaptionRegex(r"^/getfileid\b"),
-        admin_reply_photo_handler
+        admin_r_photo_handler
     ))
 
     app.add_handler(MessageHandler(
-        filters.Document.ALL & filters.CaptionRegex(r"^/replydoc\b"),
-        admin_reply_document_handler
+        filters.Document.ALL & filters.CaptionRegex(r"^/r\b"),
+        admin_r_document_handler
     ))
 
     app.add_handler(MessageHandler(
         filters.Document.ALL & filters.CaptionRegex(r"^/getfileid\b"),
-        admin_reply_document_handler
+        admin_r_document_handler
     ))
 
     # Пользовательские медиа
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
-    app.add_handler(MessageHandler(filters.Document.IMAGE, document_image_handler))
+    app.add_handler(MessageHandler(filters.Document.ALL, document_handler))
 
     # Текст
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
