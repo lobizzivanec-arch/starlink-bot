@@ -9,6 +9,7 @@ from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     InputMediaPhoto,
+    InputMediaVideo,
 )
 from telegram.ext import (
     Application,
@@ -25,16 +26,16 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "8197197463"))
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "sunrisseq")  # БЕЗ @
 
-# Группа/канал поддержки (сюда идут ТЕКСТ / ФОТО / ФАЙЛЫ)
+# Группа / канал поддержки (сюда идут ТЕКСТ / ФОТО / ВИДЕО / ФАЙЛЫ)
 ADMIN_TEXT_CHANNEL_ID = int(os.getenv("ADMIN_TEXT_CHANNEL_ID", "-1003842776546"))
 
-# Группа/канал заявок (сюда идут только скрины на модерацию)
+# Группа / канал заявок (сюда идут только скрины на модерацию)
 ADMIN_PHOTO_CHANNEL_ID = int(os.getenv("ADMIN_PHOTO_CHANNEL_ID", "-1003907521717"))
 
 REVIEWS_CHANNEL_USERNAME = os.getenv("REVIEWS_CHANNEL_USERNAME", "@your_reviews_channel")
 REVIEWS_CHANNEL_LINK = os.getenv("REVIEWS_CHANNEL_LINK", "https://t.me/your_reviews_channel")
 
-# FILE_ID картинок (по одной на экран)
+# FILE_ID медиа
 STEP1_IMAGE_1 = os.getenv("STEP1_IMAGE_1", "")
 STEP1_IMAGE_2 = os.getenv("STEP1_IMAGE_2", "")
 
@@ -44,13 +45,11 @@ ACCESS_IMAGE_2 = os.getenv("ACCESS_IMAGE_2", "")
 STEP2_IMAGE_1 = os.getenv("STEP2_IMAGE_1", "")
 STEP2_IMAGE_2 = os.getenv("STEP2_IMAGE_2", "")
 
-STEP3_IMAGE_1 = os.getenv("STEP3_IMAGE_1", "")
-STEP3_IMAGE_2 = os.getenv("STEP3_IMAGE_2", "")
-STEP3_IMAGE_3 = os.getenv("STEP3_IMAGE_3", "")
+# Шаг 3 = только 1 видео
+STEP3_VIDEO = os.getenv("STEP3_VIDEO", "")
 
 STATE_FILE = os.getenv("STATE_FILE", "bot_state.json")
 USER_MESSAGE_COOLDOWN = int(os.getenv("USER_MESSAGE_COOLDOWN", "6"))
-
 # ──────────────────────────────────────────────────────────────────────────────
 
 logging.basicConfig(
@@ -69,7 +68,6 @@ blocked_users: set[int] = set()
 user_last_message_time: dict[int, float] = {}
 
 # ─── PERSISTENCE JSON ─────────────────────────────────────────────────────────
-
 def save_state():
     try:
         data = {
@@ -101,13 +99,18 @@ def load_state():
         logger.error(f"Ошибка загрузки состояния: {e}")
 
 # ─── ТЕКСТЫ ───────────────────────────────────────────────────────────────────
-
 WELCOME_TEXT = """
 👋 <b>Привет!</b>
 
-🌐 <b>Starlink</b> — это приложение, которое ты видел в ролике.
+Ты попал в официальный бот с пошаговой инструкцией по настройке <b>Starlink</b>.
 
-📶 Быстрый интернет без ограничений.
+📶 Здесь ты получишь:
+• понятную пошаговую установку
+• видео-инструкцию
+• доступ к аккаунту без ограничений для РФ
+• помощь поддержки, если что-то не получится
+
+⚡ Весь процесс обычно занимает <b>5–15 минут</b>.
 
 Выбери, что тебя интересует 👇
 """
@@ -115,26 +118,79 @@ WELCOME_TEXT = """
 FAQ_TEXT = """
 ❓ <b>Часто задаваемые вопросы</b>
 
-<b>Что такое Starlink?</b>
-Starlink — система спутникового интернета.
+<b>Это реально работает?</b>
+Да. Всё, что показано в видео и в инструкции — рабочая схема, которую уже используют другие пользователи.
 
-<b>Для кого подходит?</b>
-• 🏕 Путешествия
-• 🚗 Поездки
-• 🌾 Дачи и сёла
-• ⚡ Там, где плохой интернет
+<b>Нужно ли покупать оборудование?</b>
+Нет. Для начала тебе не нужно ничего покупать — мы даём пошаговый доступ и показываем, как всё правильно настроить.
 
-💡 Хочешь инструкцию? Нажми <b>«Установка»</b>.
+<b>Подходит ли это для России?</b>
+Да. Именно поэтому в инструкции есть отдельный этап с доступом к аккаунту без ограничений на подключение к Wi-Fi на территории России.
+
+<b>Это сложно настроить?</b>
+Нет. Мы разбили всё на простые шаги:
+• требования перед началом
+• вход в аккаунт
+• установка приложения
+• видео-подключение к Wi-Fi
+• настройка внутри приложения
+• проверка скорости
+
+<b>Сколько занимает настройка?</b>
+Обычно от <b>5 до 15 минут</b>, если всё делать по инструкции.
+
+<b>Что делать, если что-то не получается?</b>
+В боте есть кнопка <b>«💬 Связаться с поддержкой»</b> — можешь написать прямо туда, и мы поможем вручную.
+
+<b>Нужно ли включать VPN?</b>
+Нет. Наоборот — <b>во время настройки VPN должен быть выключен</b>, чтобы всё корректно сработало.
+
+<b>Как понять, что всё настроено правильно?</b>
+На последнем этапе ты запускаешь <b>Speedtest</b> и проверяешь скорость. Если всё сделано верно — интернет работает стабильно.
+
+💡 Хочешь получить пошаговую инструкцию? Нажми <b>«📦 Установка»</b>.
 """
 
 INSTALL_TEXT = """
 📦 <b>Инструкция по установке Starlink</b>
 
-Перед получением <b>тутора</b> — один шаг:
+Перед получением <b>полного тутора</b> — один обязательный шаг:
 
 👇 Подпишись на наш <b>новый канал с отзывами пользователей Starlink</b>.
 
-После подписки нажми кнопку <b>«✅ Я подписался»</b> — и мы сразу отправим полную инструкцию.
+Там:
+• реальные отзывы
+• результаты подключения
+• скрины скорости
+• примеры успешной настройки
+
+После подписки нажми кнопку <b>«✅ Я подписался»</b> — и мы сразу откроем пошаговую инструкцию.
+"""
+
+REQUIREMENTS_TEXT = """
+⚠️ <b>Перед началом настройки — требования</b>
+
+Перед тем как переходить к установке, обязательно проверь:
+
+• <b>Версия iOS не ниже 18.0</b>
+(желательно обновить устройство до <b>последней версии iOS</b>)
+
+• <b>На время настройки выключи VPN</b>
+(после завершения можно включить обратно)
+
+• <b>Отключи режим энергосбережения</b>
+(он может мешать стабильной работе приложения и Wi-Fi)
+
+• <b>Включи геолокацию и разреши доступ приложению Starlink</b>
+(это нужно для корректного поиска сети и работы функций)
+
+• <b>Освободи минимум 1–2 ГБ памяти</b>
+(для установки приложения и возможных обновлений)
+
+• <b>Подключись к стабильному интернету на время настройки</b>
+(лучше использовать домашний Wi-Fi или мобильный интернет без VPN)
+
+После этого переходи к <b>Шагу 1</b> 👇
 """
 
 STEP_1_TEXT = """
@@ -153,31 +209,51 @@ STEP_1_TEXT = """
 """
 
 STEP_1_IMAGE_2_TEXT = """
-📦 <b>Шаг 1. Доступ в аккаунт с доступом к Starlink</b>
+🖼 <b>Шаг 1. Доступ в аккаунт с доступом к Starlink</b>
 
-<b>Дополнительно:</b>
+<b>Дополнительный пример:</b>
 
-На этом экране показан второй пример того, как должен выглядеть первый шаг.
+На этой картинке показано, как должен выглядеть первый этап перед получением доступа.
 
-После просмотра:
-• нажми <b>«Получить доступ»</b>
-• или переходи к <b>Шагу 2</b>
+Что дальше:
+• Нажми <b>«✅ Получить доступ»</b>
+• Выполни действия по примеру
+• После этого переходи к <b>Шагу 2</b>
+
+⚠️ Важно: делай всё строго по инструкции, чтобы доступ выдался без задержек.
 """
 
 ACCESS_TEXT_1 = """
-✅ <b>Получить доступ</b>
+🖼 <b>Получение доступа — пример 1</b>
 
-Нажми там, где отмечено <b>красным</b>, затем пролистай вниз и нажми кнопку <b>«Выход»</b>.
+На изображении показано, куда именно нужно нажать.
 
-После этого я дам тебе <b>почту и пароль</b> для входа.
+Что сделать:
+• Нажми там, где отмечено <b>красным</b>
+• Пролистай экран вниз
+• Нажми кнопку <b>«Выход»</b>
+
+После этого:
+• отправь скрин по инструкции
+• администрация проверит его
+• после проверки тебе выдадут данные для входа
+
+⚠️ Важно: если сделать шаг неправильно, доступ может быть отклонён.
 """
 
 ACCESS_TEXT_2 = """
-📸 <b>Отправка скрина</b>
+🖼 <b>Получение доступа — пример 2</b>
 
-Теперь просто отправь <b>фото / скрин</b>, как на примере.
+Теперь просто отправь <b>фото / скрин</b>, как показано на примере.
 
-Администрация рассмотрит заявку и предоставит данные для входа.
+Что будет дальше:
+• администрация проверит скрин
+• если всё сделано правильно — заявка будет одобрена
+• после одобрения ты получишь переход к менеджеру для выдачи данных
+
+📌 Чем чётче и понятнее скрин — тем быстрее проходит проверка.
+
+Нажми <b>«📸 Отправить скрин»</b> и отправь изображение.
 """
 
 STEP_2_TEXT = """
@@ -191,46 +267,89 @@ STEP_2_TEXT = """
 
 После установки:
 • Открой приложение
-• Разреши доступы
-• Установи обновления
-"""
-
-STEP_2_IMAGE_2_TEXT = """
-📲 <b>Шаг 2. Установка приложения Starlink</b>
-
-<b>Дополнительно:</b>
-
-На этом экране показан второй пример установки / обновления приложения.
+• Разреши необходимые доступы
+• Установи все доступные обновления
 
 После этого переходи к следующему шагу 👇
 """
 
-STEP_3_TEXT = """
-📶 <b>Шаг 3. Настройка приложения и подключение к Wi-Fi</b>
+STEP_2_IMAGE_2_TEXT = """
+🖼 <b>Шаг 2. Установка приложения Starlink</b>
+
+<b>Дополнительный пример:</b>
+
+На этой картинке показано, как должно выглядеть приложение после установки / обновления.
+
+Проверь:
+• приложение установлено
+• все обновления поставлены
+• нужные разрешения выданы
+
+После этого переходи к следующему шагу 👇
+"""
+
+STEP_3_VIDEO_TEXT = """
+🎬 <b>Шаг 3. Подключение к Wi-Fi (видео)</b>
+
+На этом этапе важно внимательно повторить действия из видео.
+
+Что нужно сделать:
+• открыть нужный раздел
+• выбрать правильную сеть
+• подключиться к Wi-Fi
+• убедиться, что соединение установлено без ошибок
+
+📌 Просто повторяй всё по видео — это самый важный этап перед настройкой внутри приложения.
+
+После просмотра переходи к <b>Шагу 4</b> 👇
+"""
+
+STEP_4_TEXT = """
+⚙️ <b>Шаг 4. Настройка в приложении Starlink</b>
 
 <b>Краткое описание:</b>
 
-После входа в приложение:
-• Открой настройки
-• Найди доступную сеть
-• Подключись к Wi-Fi
-• Дождись стабильного соединения
+После подключения к Wi-Fi открой приложение <b>Starlink</b> и выполни базовую настройку.
+
+Что важно проверить:
+• приложение открылось без ошибок
+• все доступы разрешены
+• устройство / соединение определяется корректно
+• инициализация завершилась полностью
+• нет активного VPN
+• приложение обновлено до последней версии
+
+📌 Если приложение предлагает дополнительные параметры — в большинстве случаев оставляй <b>стандартные значения</b>.
+
+После завершения переходи к <b>Шагу 5</b> 👇
 """
 
-STEP_3_IMAGE_2_TEXT = """
-📶 <b>Шаг 3. Настройка приложения и подключение к Wi-Fi</b>
+STEP_5_TEXT = """
+🚀 <b>Шаг 5. Проверка скорости интернета</b>
 
-<b>Дополнительно:</b>
+<b>Краткое описание:</b>
 
-На этом экране показан второй пример настройки.
-"""
+После завершения настройки обязательно проверь скорость соединения.
 
-STEP_3_IMAGE_3_TEXT = """
-📶 <b>Шаг 3. Настройка приложения и подключение к Wi-Fi</b>
+Что сделать:
+• открой <b>Speedtest by Ookla</b>
+• или перейди на <b>speedtest.net</b>
+• запусти тест
+• дождись полного завершения проверки
 
-<b>Финал:</b>
+<b>Нормальный результат:</b>
+• скорость — от <b>50 до 200+ Мбит/с</b>
+• стабильное соединение без резких просадок
+• пинг зависит от региона и условий сети
 
-На этом экране показан третий пример завершения настройки.
+Если скорость ниже ожидаемой:
+• переподключись к Wi-Fi
+• перезапусти приложение
+• убедись, что VPN выключен
+• проверь, что iOS обновлена
+• повтори тест ещё раз через 1–2 минуты
+
+✅ Если тест прошёл успешно — настройка завершена.
 """
 
 NOT_SUBSCRIBED_TEXT = """
@@ -269,10 +388,10 @@ PHOTO_RECEIVED_TEXT = """
 Ожидайте проверки от поддержки 🛰
 """
 
-PHOTO_APPROVED_TEXT = """
+PHOTO_APPROVED_TEXT = f"""
 ✅ <b>Ваше фото одобрено!</b>
 
-Напишите менеджеру <b>@sunrisseq</b> для получения данных / доступа 👇
+Напишите менеджеру <b>@{ADMIN_USERNAME}</b> для получения данных / доступа 👇
 """
 
 PHOTO_REJECTED_TEXT = """
@@ -308,7 +427,6 @@ SPAM_WAIT_TEXT = f"""
 """
 
 # ─── КЛАВИАТУРЫ ───────────────────────────────────────────────────────────────
-
 def main_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("❓ Частые вопросы", callback_data="faq")],
@@ -333,6 +451,13 @@ def faq_keyboard():
 
 def support_keyboard():
     return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🏠 Главное меню", callback_data="start")],
+    ])
+
+def requirements_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("➡️ Перейти к Шагу 1", callback_data="step1:1")],
+        [InlineKeyboardButton("💬 Поддержка", callback_data="support")],
         [InlineKeyboardButton("🏠 Главное меню", callback_data="start")],
     ])
 
@@ -392,22 +517,32 @@ def step2_keyboard(page: int):
 
     return InlineKeyboardMarkup(rows)
 
-def step3_keyboard(page: int, total_pages: int):
-    rows = []
+def step3_keyboard():
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("⬅️ Шаг 2", callback_data="step2:1"),
+            InlineKeyboardButton("➡️ Шаг 4", callback_data="step4"),
+        ],
+        [InlineKeyboardButton("💬 Поддержка", callback_data="support")],
+        [InlineKeyboardButton("🏠 Главное меню", callback_data="start")],
+    ])
 
-    nav = []
-    if page > 1:
-        nav.append(InlineKeyboardButton(f"⬅️ Фото {page-1}", callback_data=f"step3:{page-1}"))
-    if page < total_pages:
-        nav.append(InlineKeyboardButton(f"➡️ Фото {page+1}", callback_data=f"step3:{page+1}"))
-    if nav:
-        rows.append(nav)
+def step4_keyboard():
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("⬅️ Шаг 3", callback_data="step3:1"),
+            InlineKeyboardButton("➡️ Шаг 5", callback_data="step5"),
+        ],
+        [InlineKeyboardButton("💬 Поддержка", callback_data="support")],
+        [InlineKeyboardButton("🏠 Главное меню", callback_data="start")],
+    ])
 
-    rows.append([InlineKeyboardButton("⬅️ Шаг 2", callback_data="step2:1")])
-    rows.append([InlineKeyboardButton("💬 Поддержка", callback_data="support")])
-    rows.append([InlineKeyboardButton("🏠 Главное меню", callback_data="start")])
-
-    return InlineKeyboardMarkup(rows)
+def step5_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("⬅️ Шаг 4", callback_data="step4")],
+        [InlineKeyboardButton("💬 Поддержка", callback_data="support")],
+        [InlineKeyboardButton("🏠 Главное меню", callback_data="start")],
+    ])
 
 def approved_contact_keyboard():
     return InlineKeyboardMarkup([
@@ -434,7 +569,6 @@ def photo_moderation_keyboard(user_id: int):
     ])
 
 # ─── ВСПОМОГАТЕЛЬНЫЕ ──────────────────────────────────────────────────────────
-
 def safe_username(username: str | None) -> str:
     return f"@{username}" if username else "без username"
 
@@ -524,7 +658,7 @@ def parse_r_media_caption(caption: str) -> tuple[int | None, str]:
 
     parts = body.split(maxsplit=1)
 
-    if parts[0].isdigit():
+    if parts and parts[0].isdigit():
         target_id = int(parts[0])
         reply_text = parts[1] if len(parts) > 1 else ""
         return target_id, reply_text
@@ -561,14 +695,9 @@ async def open_support_chat_for_user(context: ContextTypes.DEFAULT_TYPE, user_id
     except Exception as e:
         logger.error(f"Не удалось открыть чат поддержки для {user_id}: {e}")
 
-def get_step3_total_pages() -> int:
-    images = [STEP3_IMAGE_1, STEP3_IMAGE_2, STEP3_IMAGE_3]
-    return max(1, len([x for x in images if x]))
-
 async def safe_edit_to_text(query, text: str, reply_markup: InlineKeyboardMarkup):
     try:
-        # если сообщение с фото — сначала редактируем caption
-        if query.message.photo:
+        if query.message.photo or query.message.video:
             await query.edit_message_caption(
                 caption=text[:1024],
                 parse_mode="HTML",
@@ -597,11 +726,6 @@ async def safe_edit_to_media_or_text(
     text: str,
     reply_markup: InlineKeyboardMarkup,
 ):
-    """
-    Одно сообщение:
-    - если есть картинка → edit_message_media(photo + caption)
-    - если нет → edit_message_text
-    """
     if image_id:
         try:
             media = InputMediaPhoto(
@@ -615,13 +739,43 @@ async def safe_edit_to_media_or_text(
             )
             return
         except Exception as e:
-            logger.warning(f"edit_message_media failed, fallback to text: {e}")
+            logger.warning(f"edit_message_media(photo) failed, fallback to text: {e}")
 
-    # fallback на текст
+    await safe_edit_to_text(query, text, reply_markup)
+
+async def safe_edit_to_any_media_or_text(
+    query,
+    media_type: str,
+    file_id: str,
+    text: str,
+    reply_markup: InlineKeyboardMarkup,
+):
+    if file_id:
+        try:
+            if media_type == "video":
+                media = InputMediaVideo(
+                    media=file_id,
+                    caption=text[:1024],
+                    parse_mode="HTML",
+                )
+            else:
+                media = InputMediaPhoto(
+                    media=file_id,
+                    caption=text[:1024],
+                    parse_mode="HTML",
+                )
+
+            await query.edit_message_media(
+                media=media,
+                reply_markup=reply_markup,
+            )
+            return
+        except Exception as e:
+            logger.warning(f"safe_edit_to_any_media_or_text failed ({media_type}), fallback to text: {e}")
+
     await safe_edit_to_text(query, text, reply_markup)
 
 # ─── ЭКРАНЫ SINGLE MESSAGE ────────────────────────────────────────────────────
-
 async def render_start(query):
     await safe_edit_to_text(query, WELCOME_TEXT, main_keyboard())
 
@@ -637,6 +791,9 @@ async def render_support(query):
         return
 
     await safe_edit_to_text(query, SUPPORT_MENU_TEXT, support_keyboard())
+
+async def render_requirements(query):
+    await safe_edit_to_text(query, REQUIREMENTS_TEXT, requirements_keyboard())
 
 async def render_step1(query, page: int):
     if page == 2:
@@ -707,33 +864,22 @@ async def render_step2(query, page: int):
         reply_markup=step2_keyboard(page),
     )
 
-async def render_step3(query, page: int):
-    total_pages = get_step3_total_pages()
-
-    if page < 1:
-        page = 1
-    if page > total_pages:
-        page = total_pages
-
-    if page == 3:
-        text = STEP_3_IMAGE_3_TEXT
-        image = STEP3_IMAGE_3
-    elif page == 2:
-        text = STEP_3_IMAGE_2_TEXT
-        image = STEP3_IMAGE_2
-    else:
-        text = STEP_3_TEXT
-        image = STEP3_IMAGE_1
-
-    await safe_edit_to_media_or_text(
+async def render_step3(query, page: int = 1):
+    await safe_edit_to_any_media_or_text(
         query=query,
-        image_id=image,
-        text=text,
-        reply_markup=step3_keyboard(page, total_pages),
+        media_type="video",
+        file_id=STEP3_VIDEO,
+        text=STEP_3_VIDEO_TEXT,
+        reply_markup=step3_keyboard(),
     )
 
-# ─── ОТПРАВКА В ГРУППУ ПОДДЕРЖКИ ─────────────────────────────────────────────
+async def render_step4(query):
+    await safe_edit_to_text(query, STEP_4_TEXT, step4_keyboard())
 
+async def render_step5(query):
+    await safe_edit_to_text(query, STEP_5_TEXT, step5_keyboard())
+
+# ─── ОТПРАВКА В ГРУППУ ПОДДЕРЖКИ ─────────────────────────────────────────────
 async def forward_user_text_to_support(
     context: ContextTypes.DEFAULT_TYPE,
     user_id: int,
@@ -750,7 +896,7 @@ async def forward_user_text_to_support(
                 f"🆔 <code>{user_id}</code>\n\n"
                 f"<i>{text}</i>\n\n"
                 f"Reply + <code>/r [текст]</code>\n"
-                f"или <code>/close</code> / <code>/block</code>"
+                f"или <code>/c</code> / <code>/b</code>"
             ),
             parse_mode="HTML",
         )
@@ -775,12 +921,37 @@ async def forward_user_photo_to_support(
                 f"Reply + <code>/r [текст]</code>\n"
                 f"или reply + фото с подписью <code>/r [текст]</code>\n"
                 f"или reply + файлом с подписью <code>/r [текст]</code>\n"
-                f"<code>/close</code> / <code>/block</code>"
+                f"<code>/c</code> / <code>/b</code>"
             )[:1024],
             parse_mode="HTML",
         )
     except Exception as e:
         logger.error(f"Не удалось отправить фото в support-группу: {e}")
+
+async def forward_user_video_to_support(
+    context: ContextTypes.DEFAULT_TYPE,
+    user_id: int,
+    username: str,
+    full_name: str,
+    video_file_id: str,
+):
+    try:
+        await context.bot.send_video(
+            chat_id=ADMIN_TEXT_CHANNEL_ID,
+            video=video_file_id,
+            caption=(
+                f"🎥 <b>Видео от пользователя</b>\n"
+                f"👤 {full_name} ({username})\n"
+                f"🆔 <code>{user_id}</code>\n\n"
+                f"Reply + <code>/r [текст]</code>\n"
+                f"или reply + фото с подписью <code>/r [текст]</code>\n"
+                f"или reply + файлом с подписью <code>/r [текст]</code>\n"
+                f"<code>/c</code> / <code>/b</code>"
+            )[:1024],
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        logger.error(f"Не удалось отправить видео в support-группу: {e}")
 
 async def forward_user_document_to_support(
     context: ContextTypes.DEFAULT_TYPE,
@@ -802,15 +973,14 @@ async def forward_user_document_to_support(
                 f"Reply + <code>/r [текст]</code>\n"
                 f"или reply + фото с подписью <code>/r [текст]</code>\n"
                 f"или reply + файлом с подписью <code>/r [текст]</code>\n"
-                f"<code>/close</code> / <code>/block</code>"
+                f"<code>/c</code> / <code>/b</code>"
             )[:1024],
             parse_mode="HTML",
         )
     except Exception as e:
         logger.error(f"Не удалось отправить файл в support-группу: {e}")
 
-# ─── КНОПКИ ───────────────────────────────────────────────────────────────────
-
+# ─── CALLBACK / КНОПКИ ───────────────────────────────────────────────────────
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         WELCOME_TEXT,
@@ -943,7 +1113,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             member = await context.bot.get_chat_member(REVIEWS_CHANNEL_USERNAME, query.from_user.id)
             if member.status in ("member", "administrator", "creator"):
-                await render_step1(query, 1)
+                await render_requirements(query)
             else:
                 await safe_edit_to_text(query, NOT_SUBSCRIBED_TEXT, install_keyboard())
         except Exception as e:
@@ -971,12 +1141,18 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data.startswith("step3:"):
-        page = int(data.split(":")[1])
-        await render_step3(query, page)
+        await render_step3(query, 1)
+        return
+
+    if data == "step4":
+        await render_step4(query)
+        return
+
+    if data == "step5":
+        await render_step5(query)
         return
 
 # ─── АДМИН-КОМАНДЫ ───────────────────────────────────────────────────────────
-
 async def cmd_r(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
@@ -1014,6 +1190,77 @@ async def cmd_r(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Ошибка: {e}")
 
+async def cmd_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    target_id = None
+    if context.args and context.args[0].isdigit():
+        target_id = int(context.args[0])
+    else:
+        target_id = resolve_target_id_from_reply(update)
+
+    if not target_id:
+        await update.message.reply_text("📝 /a [ID] или reply + /a")
+        return
+
+    try:
+        submitted_requests.discard(target_id)
+        waiting_for_photo.discard(target_id)
+        save_state()
+
+        await context.bot.send_message(
+            chat_id=target_id,
+            text=PHOTO_APPROVED_TEXT,
+            parse_mode="HTML",
+            reply_markup=approved_contact_keyboard(),
+        )
+
+        await update.message.reply_text(f"✅ Пользователь {target_id} одобрен.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка: {e}")
+
+async def cmd_decline(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    target_id = None
+    decline_reason = ""
+
+    if context.args:
+        if context.args[0].isdigit():
+            target_id = int(context.args[0])
+            decline_reason = " ".join(context.args[1:]).strip()
+        else:
+            target_id = resolve_target_id_from_reply(update)
+            decline_reason = " ".join(context.args).strip()
+    else:
+        target_id = resolve_target_id_from_reply(update)
+
+    if not target_id:
+        await update.message.reply_text("📝 /d [ID] [причина] или reply + /d [причина]")
+        return
+
+    try:
+        submitted_requests.discard(target_id)
+        waiting_for_photo.discard(target_id)
+        save_state()
+
+        reject_text = PHOTO_REJECTED_TEXT
+        if decline_reason:
+            reject_text += f"\n\n💬 <b>Комментарий поддержки:</b>\n{decline_reason}"
+
+        await context.bot.send_message(
+            chat_id=target_id,
+            text=reject_text,
+            parse_mode="HTML",
+            reply_markup=retry_request_keyboard(),
+        )
+
+        await update.message.reply_text(f"❌ Пользователь {target_id} отклонён.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка: {e}")
+
 async def cmd_close(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
@@ -1025,7 +1272,7 @@ async def cmd_close(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target_id = resolve_target_id_from_reply(update)
 
     if not target_id:
-        await update.message.reply_text("📝 /close [ID] или reply + /close")
+        await update.message.reply_text("📝 /c [ID] или reply + /c")
         return
 
     try:
@@ -1054,7 +1301,7 @@ async def cmd_block(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target_id = resolve_target_id_from_reply(update)
 
     if not target_id:
-        await update.message.reply_text("📝 /block [ID] или reply + /block")
+        await update.message.reply_text("📝 /b [ID] или reply + /b")
         return
 
     try:
@@ -1079,7 +1326,7 @@ async def cmd_unblock(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if not context.args or not context.args[0].isdigit():
-        await update.message.reply_text("📝 /unblock [ID]")
+        await update.message.reply_text("📝 /u [ID]")
         return
 
     target_id = int(context.args[0])
@@ -1128,25 +1375,30 @@ async def cmd_getfileid(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"🖼 PHOTO FILE_ID:\n<code>{file_id}</code>", parse_mode="HTML")
             return
 
+        if replied.video:
+            file_id = replied.video.file_id
+            await update.message.reply_text(f"🎥 VIDEO FILE_ID:\n<code>{file_id}</code>", parse_mode="HTML")
+            return
+
         if replied.document:
             file_id = replied.document.file_id
             await update.message.reply_text(f"📎 DOCUMENT FILE_ID:\n<code>{file_id}</code>", parse_mode="HTML")
             return
 
     await update.message.reply_text(
-        "ℹ️ Ответь /getfileid на фото или файл, либо отправь с подписью /getfileid",
+        "ℹ️ Ответь /g на фото, видео или файл,\n"
+        "либо отправь медиа с подписью /g",
         parse_mode="HTML"
     )
 
-# ─── АДМИН: ФОТО/ФАЙЛЫ ЧЕРЕЗ /r ──────────────────────────────────────────────
-
+# ─── АДМИН: ФОТО / ВИДЕО / ФАЙЛЫ ЧЕРЕЗ /r И /g ──────────────────────────────
 async def admin_r_photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
 
     caption = update.message.caption or ""
 
-    if caption.strip().startswith("/getfileid"):
+    if caption.strip().startswith("/g"):
         if update.message.photo:
             file_id = update.message.photo[-1].file_id
             await update.message.reply_text(f"🖼 PHOTO FILE_ID:\n<code>{file_id}</code>", parse_mode="HTML")
@@ -1190,13 +1442,32 @@ async def admin_r_photo_handler(update: Update, context: ContextTypes.DEFAULT_TY
     except Exception as e:
         await update.message.reply_text(f"❌ Ошибка: {e}")
 
+async def admin_r_video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    caption = update.message.caption or ""
+
+    if caption.strip().startswith("/g"):
+        if update.message.video:
+            file_id = update.message.video.file_id
+            await update.message.reply_text(f"🎥 VIDEO FILE_ID:\n<code>{file_id}</code>", parse_mode="HTML")
+        return
+
+    if caption.strip().startswith("/r"):
+        await update.message.reply_text(
+            "ℹ️ Сейчас /r поддерживает текст, фото и файлы.\n"
+            "Для видео пока используется только /g.",
+            parse_mode="HTML",
+        )
+
 async def admin_r_document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
 
     caption = update.message.caption or ""
 
-    if caption.strip().startswith("/getfileid"):
+    if caption.strip().startswith("/g"):
         if update.message.document:
             file_id = update.message.document.file_id
             await update.message.reply_text(f"📎 DOCUMENT FILE_ID:\n<code>{file_id}</code>", parse_mode="HTML")
@@ -1241,7 +1512,6 @@ async def admin_r_document_handler(update: Update, context: ContextTypes.DEFAULT
         await update.message.reply_text(f"❌ Ошибка: {e}")
 
 # ─── ПОЛЬЗОВАТЕЛЬСКИЕ СООБЩЕНИЯ ──────────────────────────────────────────────
-
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id, username, full_name = build_user_info(update)
     text = update.message.text if update.message.text else ""
@@ -1277,14 +1547,13 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 # ─── ПОЛЬЗОВАТЕЛЬСКИЕ ФОТО ───────────────────────────────────────────────────
-
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id, username, full_name = build_user_info(update)
 
     # если админ шлёт фото без /r — подсказка
     if user_id == ADMIN_ID:
         caption = update.message.caption or ""
-        if caption.strip().startswith("/r") or caption.strip().startswith("/getfileid"):
+        if caption.strip().startswith("/r") or caption.strip().startswith("/g"):
             return
 
         await update.message.reply_text(
@@ -1364,15 +1633,66 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Ошибка отправки фото в поддержку: {e}")
         await update.message.reply_text("❌ Не удалось отправить фото в поддержку.")
 
-# ─── ПОЛЬЗОВАТЕЛЬСКИЕ ФАЙЛЫ ──────────────────────────────────────────────────
+# ─── ПОЛЬЗОВАТЕЛЬСКИЕ ВИДЕО ──────────────────────────────────────────────────
+async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id, username, full_name = build_user_info(update)
 
+    # если админ шлёт видео
+    if user_id == ADMIN_ID:
+        caption = update.message.caption or ""
+        if caption.strip().startswith("/g") or caption.strip().startswith("/r"):
+            return
+
+        await update.message.reply_text(
+            "🎥 Для видео сейчас доступно:\n"
+            "<code>/g</code> в подписи к видео",
+            parse_mode="HTML",
+        )
+        return
+
+    if user_id in blocked_users:
+        await update.message.reply_text(SUPPORT_BLOCKED_TEXT, parse_mode="HTML")
+        return
+
+    if is_user_rate_limited(user_id):
+        await send_rate_limit_warning(update)
+        return
+
+    # в режиме заявки ждём только фото/скрин, не видео
+    if user_id in waiting_for_photo:
+        await update.message.reply_text(
+            "📸 Для заявки нужен именно <b>фото / скрин</b>, а не видео.",
+            parse_mode="HTML",
+        )
+        return
+
+    try:
+        await forward_user_video_to_support(
+            context,
+            user_id,
+            username,
+            full_name,
+            update.message.video.file_id,
+        )
+
+        if user_id not in active_support_chats:
+            await update.message.reply_text(
+                "📨 <b>Видео отправлено в поддержку.</b>",
+                parse_mode="HTML",
+                reply_markup=support_keyboard(),
+            )
+    except Exception as e:
+        logger.error(f"Ошибка отправки видео в поддержку: {e}")
+        await update.message.reply_text("❌ Не удалось отправить видео в поддержку.")
+
+# ─── ПОЛЬЗОВАТЕЛЬСКИЕ ФАЙЛЫ ──────────────────────────────────────────────────
 async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id, username, full_name = build_user_info(update)
 
     # если админ шлёт файл без /r — подсказка
     if user_id == ADMIN_ID:
         caption = update.message.caption or ""
-        if caption.strip().startswith("/r") or caption.strip().startswith("/getfileid"):
+        if caption.strip().startswith("/r") or caption.strip().startswith("/g"):
             return
 
         await update.message.reply_text(
@@ -1467,7 +1787,6 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Не удалось отправить файл в поддержку.")
 
 # ─── ЗАПУСК ───────────────────────────────────────────────────────────────────
-
 def main():
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN не найден. Добавь переменную BOT_TOKEN в Railway Variables.")
@@ -1478,36 +1797,57 @@ def main():
 
     # команды
     app.add_handler(CommandHandler("start", cmd_start))
+
+    # reply
     app.add_handler(CommandHandler("r", cmd_r))
+
+    # approve / decline
+    app.add_handler(CommandHandler("a", cmd_approve))
+    app.add_handler(CommandHandler("approve", cmd_approve))
+
+    app.add_handler(CommandHandler("d", cmd_decline))
+    app.add_handler(CommandHandler("reject", cmd_decline))
+
+    # close
+    app.add_handler(CommandHandler("c", cmd_close))
     app.add_handler(CommandHandler("close", cmd_close))
+
+    # block
+    app.add_handler(CommandHandler("b", cmd_block))
     app.add_handler(CommandHandler("block", cmd_block))
+
+    # unblock
+    app.add_handler(CommandHandler("u", cmd_unblock))
     app.add_handler(CommandHandler("unblock", cmd_unblock))
+
+    # state
+    app.add_handler(CommandHandler("s", cmd_state))
     app.add_handler(CommandHandler("state", cmd_state))
+
+    # get file id
+    app.add_handler(CommandHandler("g", cmd_getfileid))
     app.add_handler(CommandHandler("getfileid", cmd_getfileid))
 
     # кнопки
     app.add_handler(CallbackQueryHandler(callback_handler))
 
-    # админ: фото/файлы через /r
+    # админ: фото / видео / файлы через /r и /g
     app.add_handler(MessageHandler(
-        filters.PHOTO & filters.CaptionRegex(r"^/r\b"),
+        filters.PHOTO & (filters.CaptionRegex(r"^/r\b") | filters.CaptionRegex(r"^/g\b")),
         admin_r_photo_handler
     ))
     app.add_handler(MessageHandler(
-        filters.PHOTO & filters.CaptionRegex(r"^/getfileid\b"),
-        admin_r_photo_handler
+        filters.VIDEO & (filters.CaptionRegex(r"^/r\b") | filters.CaptionRegex(r"^/g\b")),
+        admin_r_video_handler
     ))
     app.add_handler(MessageHandler(
-        filters.Document.ALL & filters.CaptionRegex(r"^/r\b"),
-        admin_r_document_handler
-    ))
-    app.add_handler(MessageHandler(
-        filters.Document.ALL & filters.CaptionRegex(r"^/getfileid\b"),
+        filters.Document.ALL & (filters.CaptionRegex(r"^/r\b") | filters.CaptionRegex(r"^/g\b")),
         admin_r_document_handler
     ))
 
     # пользовательские медиа
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
+    app.add_handler(MessageHandler(filters.VIDEO, video_handler))
     app.add_handler(MessageHandler(filters.Document.ALL, document_handler))
 
     # текст
