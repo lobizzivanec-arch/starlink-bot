@@ -19,7 +19,7 @@ from telegram.ext import (
     ContextTypes,
 )
 
-# ─── НАСТРОЙКИ ────────────────────────────────────────────────────────────────
+# ─── НАСТРОЙКИ (Railway Variables) ───────────────────────────────────────────
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 ADMIN_ID = int(os.getenv("ADMIN_ID", "8197197463"))
@@ -35,15 +35,22 @@ REVIEWS_CHANNEL_USERNAME = os.getenv("REVIEWS_CHANNEL_USERNAME", "@your_reviews_
 REVIEWS_CHANNEL_LINK = os.getenv("REVIEWS_CHANNEL_LINK", "https://t.me/your_reviews_channel")
 
 # FILE_ID картинок
+# ШАГ 1 (НОВОЕ: 2 фото)
+STEP1_IMAGE_1 = os.getenv("STEP1_IMAGE_1", "")
+STEP1_IMAGE_2 = os.getenv("STEP1_IMAGE_2", "")
+
+# "Получить доступ"
+ACCESS_IMAGE_1 = os.getenv("ACCESS_IMAGE_1", "")
+ACCESS_IMAGE_2 = os.getenv("ACCESS_IMAGE_2", "")
+
+# ШАГ 2
 STEP2_IMAGE_1 = os.getenv("STEP2_IMAGE_1", "")
 STEP2_IMAGE_2 = os.getenv("STEP2_IMAGE_2", "")
 
+# ШАГ 3
 STEP3_IMAGE_1 = os.getenv("STEP3_IMAGE_1", "")
 STEP3_IMAGE_2 = os.getenv("STEP3_IMAGE_2", "")
 STEP3_IMAGE_3 = os.getenv("STEP3_IMAGE_3", "")
-
-ACCESS_IMAGE_1 = os.getenv("ACCESS_IMAGE_1", "")
-ACCESS_IMAGE_2 = os.getenv("ACCESS_IMAGE_2", "")
 
 STATE_FILE = os.getenv("STATE_FILE", "bot_state.json")
 
@@ -140,7 +147,7 @@ INSTALL_TEXT = """
 
 👇 Подпишись на наш <b>новый канал с отзывами пользователей Starlink</b>.
 
-После подписки нажми кнопку <b>«✅ Я подписался»</b> — и мы сразу отправим тебе полную инструкцию.
+После подписки нажми кнопку <b>«✅ Я подписался»</b> — и мы сразу отправим полную инструкцию.
 """
 
 STEP_1_TEXT = """
@@ -235,6 +242,12 @@ PHOTO_REJECTED_TEXT = """
 ❌ <b>Поддержка не одобрила ваше фото.</b>
 
 Если это ошибка — отправьте более чёткое фото / скрин ещё раз.
+"""
+
+STEP1_PANEL_TEXT = """
+📦 <b>Шаг 1 открыт выше</b>
+
+Смотри 2 изображения выше и переходи дальше 👇
 """
 
 ACCESS_PANEL_TEXT = """
@@ -386,11 +399,6 @@ async def send_rate_limit_warning(update: Update):
         logger.error(f"Ошибка антиспам-уведомления: {e}")
 
 def extract_user_id_from_text(text: str | None) -> int | None:
-    """
-    Ищет user_id в тексте вида:
-    🆔 123456789
-    🆔 <code>123456789</code>
-    """
     if not text:
         return None
 
@@ -409,9 +417,6 @@ def extract_user_id_from_text(text: str | None) -> int | None:
     return None
 
 def resolve_target_id_from_reply(update: Update) -> int | None:
-    """
-    Достаёт ID из reply_to_message (текст или caption)
-    """
     if not update.message or not update.message.reply_to_message:
         return None
 
@@ -430,10 +435,6 @@ def resolve_target_id_from_reply(update: Update) -> int | None:
     return None
 
 def parse_r_text_args(update: Update, context: ContextTypes.DEFAULT_TYPE) -> tuple[int | None, str]:
-    """
-    /r 123 текст
-    или reply на сообщение + /r текст
-    """
     if context.args:
         first = context.args[0]
         if first.isdigit():
@@ -446,18 +447,12 @@ def parse_r_text_args(update: Update, context: ContextTypes.DEFAULT_TYPE) -> tup
     return target_id, reply_text
 
 def parse_r_media_caption(caption: str) -> tuple[int | None, str]:
-    """
-    Поддержка:
-    /r 123 текст
-    /r текст   (если media отправлен reply'ем)
-    """
     if not caption:
         return None, ""
 
     if not caption.strip().startswith("/r"):
         return None, ""
 
-    # убираем /r
     body = caption.strip()[2:].strip()
     if not body:
         return None, ""
@@ -469,7 +464,6 @@ def parse_r_media_caption(caption: str) -> tuple[int | None, str]:
         reply_text = parts[1] if len(parts) > 1 else ""
         return target_id, reply_text
 
-    # если ID нет, значит это текст, а ID берём из reply_to_message
     return None, body
 
 def get_target_id_for_r_media(update: Update) -> tuple[int | None, str]:
@@ -834,10 +828,14 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             member = await context.bot.get_chat_member(REVIEWS_CHANNEL_USERNAME, query.from_user.id)
             if member.status in ("member", "administrator", "creator"):
-                await query.edit_message_text(
-                    STEP_1_TEXT,
-                    parse_mode="HTML",
-                    reply_markup=step_1_keyboard(),
+                # ШАГ 1 = 2 фото сверху + редактируем нижнее сообщение
+                await send_step_album_and_update_panel(
+                    query=query,
+                    context=context,
+                    image_ids=[STEP1_IMAGE_1, STEP1_IMAGE_2],
+                    caption_text=STEP_1_TEXT,
+                    panel_text=STEP1_PANEL_TEXT,
+                    panel_keyboard=step_1_keyboard(),
                 )
             else:
                 await query.edit_message_text(
@@ -854,10 +852,13 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
     elif query.data == "step1":
-        await query.edit_message_text(
-            STEP_1_TEXT,
-            parse_mode="HTML",
-            reply_markup=step_1_keyboard(),
+        await send_step_album_and_update_panel(
+            query=query,
+            context=context,
+            image_ids=[STEP1_IMAGE_1, STEP1_IMAGE_2],
+            caption_text=STEP_1_TEXT,
+            panel_text=STEP1_PANEL_TEXT,
+            panel_keyboard=step_1_keyboard(),
         )
 
     elif query.data == "get_access":
@@ -1137,11 +1138,6 @@ async def cmd_getfileid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ─── АДМИН: ОТВЕТ МЕДИА ЧЕРЕЗ /r ─────────────────────────────────────────────
 
 async def admin_r_photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Фото + подпись:
-    /r 123 текст
-    или reply на сообщение + фото с подписью /r текст
-    """
     if update.effective_user.id != ADMIN_ID:
         return
 
@@ -1193,11 +1189,6 @@ async def admin_r_photo_handler(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text(f"❌ Ошибка: {e}")
 
 async def admin_r_document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Файл + подпись:
-    /r 123 текст
-    или reply на сообщение + файл с подписью /r текст
-    """
     if update.effective_user.id != ADMIN_ID:
         return
 
@@ -1278,7 +1269,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # любой текст = поддержка
     await forward_user_text_to_support(context, user_id, username, full_name, text)
 
-    # если чат ещё не открыт — просто уведомляем пользователя
     if user_id not in active_support_chats:
         await update.message.reply_text(
             "💬 <b>Сообщение отправлено в поддержку.</b>\n\nОжидайте ответа администратора.",
@@ -1291,8 +1281,12 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id, username, full_name = build_user_info(update)
 
-    # если это админ шлёт фото с подписью /r
+    # если это админ шлёт фото без подписи /r — просто подсказка
     if user_id == ADMIN_ID:
+        caption = update.message.caption or ""
+        if caption.strip().startswith("/r") or caption.strip().startswith("/getfileid"):
+            return
+
         await update.message.reply_text(
             "📸 Для ответа пользователю:\n"
             "Reply на сообщение пользователя + фото с подписью:\n"
@@ -1379,8 +1373,12 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id, username, full_name = build_user_info(update)
 
-    # если это админ шлёт файл с подписью /r
+    # если это админ шлёт файл без /r — подсказка
     if user_id == ADMIN_ID:
+        caption = update.message.caption or ""
+        if caption.strip().startswith("/r") or caption.strip().startswith("/getfileid"):
+            return
+
         await update.message.reply_text(
             "📎 Для ответа пользователю:\n"
             "Reply на сообщение пользователя + файл с подписью:\n"
