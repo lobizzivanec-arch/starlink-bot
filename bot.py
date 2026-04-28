@@ -36,6 +36,10 @@ REVIEWS_CHANNEL_USERNAME = os.getenv("REVIEWS_CHANNEL_USERNAME", "@your_reviews_
 REVIEWS_CHANNEL_LINK = os.getenv("REVIEWS_CHANNEL_LINK", "https://t.me/your_reviews_channel")
 
 # FILE_ID медиа
+REQ_IMAGE_1 = os.getenv("REQ_IMAGE_1", "")
+REQ_IMAGE_2 = os.getenv("REQ_IMAGE_2", "")
+REQ_IMAGE_3 = os.getenv("REQ_IMAGE_3", "")
+
 STEP1_IMAGE_1 = os.getenv("STEP1_IMAGE_1", "")
 STEP1_IMAGE_2 = os.getenv("STEP1_IMAGE_2", "")
 
@@ -45,8 +49,11 @@ ACCESS_IMAGE_2 = os.getenv("ACCESS_IMAGE_2", "")
 STEP2_IMAGE_1 = os.getenv("STEP2_IMAGE_1", "")
 STEP2_IMAGE_2 = os.getenv("STEP2_IMAGE_2", "")
 
-# Шаг 3 = только 1 видео
 STEP3_VIDEO = os.getenv("STEP3_VIDEO", "")
+STEP4_VIDEO = os.getenv("STEP4_VIDEO", "")
+
+STEP5_IMAGE_1 = os.getenv("STEP5_IMAGE_1", "")
+STEP5_IMAGE_2 = os.getenv("STEP5_IMAGE_2", "")
 
 STATE_FILE = os.getenv("STATE_FILE", "bot_state.json")
 USER_MESSAGE_COOLDOWN = int(os.getenv("USER_MESSAGE_COOLDOWN", "6"))
@@ -106,7 +113,7 @@ WELCOME_TEXT = """
 
 📶 Здесь ты получишь:
 • понятную пошаговую установку
-• видео-инструкцию
+• видео-инструкции
 • доступ к аккаунту без ограничений для РФ
 • помощь поддержки, если что-то не получится
 
@@ -133,7 +140,7 @@ FAQ_TEXT = """
 • вход в аккаунт
 • установка приложения
 • видео-подключение к Wi-Fi
-• настройка внутри приложения
+• видео-настройка внутри приложения
 • проверка скорости
 
 <b>Сколько занимает настройка?</b>
@@ -168,29 +175,66 @@ INSTALL_TEXT = """
 """
 
 REQUIREMENTS_TEXT = """
-⚠️ <b>Перед началом настройки — требования</b>
+⚠️ <b>Перед началом настройки — обязательные требования</b>
 
 Перед тем как переходить к установке, обязательно проверь:
 
 • <b>Версия iOS не ниже 18.0</b>
-(желательно обновить устройство до <b>последней версии iOS</b>)
+(желательно обновить iPhone до <b>последней версии iOS</b>)
 
-• <b>На время настройки выключи VPN</b>
+• <b>На время настройки полностью выключи VPN</b>
 (после завершения можно включить обратно)
 
 • <b>Отключи режим энергосбережения</b>
 (он может мешать стабильной работе приложения и Wi-Fi)
 
-• <b>Включи геолокацию и разреши доступ приложению Starlink</b>
-(это нужно для корректного поиска сети и работы функций)
+• <b>Включи геолокацию на iPhone</b>
+(<b>Локатор / Службы геолокации</b> должны быть активны)
+
+• <b>Разреши приложению Starlink доступ к геопозиции</b>
+(это важно для корректного поиска сети и настройки)
+
+• <b>Разреши доступ к локальной сети и Wi-Fi</b>
+(если iPhone спросит разрешение — обязательно нажми <b>«Разрешить»</b>)
 
 • <b>Освободи минимум 1–2 ГБ памяти</b>
 (для установки приложения и возможных обновлений)
 
 • <b>Подключись к стабильному интернету на время настройки</b>
-(лучше использовать домашний Wi-Fi или мобильный интернет без VPN)
+(лучше домашний Wi-Fi или мобильный интернет без VPN)
+
+• <b>Закрой лишние приложения перед началом</b>
+(чтобы ничего не мешало установке и обновлению)
 
 После этого переходи к <b>Шагу 1</b> 👇
+"""
+
+REQUIREMENTS_TEXT_2 = """
+🖼 <b>Требования — пример 2</b>
+
+Проверь на этом экране:
+
+• геолокация / Локатор включены
+• VPN выключен
+• режим энергосбережения отключён
+• все системные разрешения активны
+
+⚠️ Если хотя бы один из пунктов не выполнен — настройка может пройти с ошибками.
+
+После проверки переходи дальше 👇
+"""
+
+REQUIREMENTS_TEXT_3 = """
+🖼 <b>Требования — пример 3</b>
+
+Финальная проверка перед запуском:
+
+• iPhone обновлён
+• интернет стабилен
+• Starlink получит доступ к геопозиции
+• ограничения iOS не мешают подключению
+
+📌 Чем точнее выполнены требования — тем быстрее проходит вся настройка.
 """
 
 STEP_1_TEXT = """
@@ -288,10 +332,10 @@ STEP_2_IMAGE_2_TEXT = """
 После этого переходи к следующему шагу 👇
 """
 
-STEP_3_VIDEO_TEXT = """
-🎬 <b>Шаг 3. Подключение к Wi-Fi (видео)</b>
+STEP_3_TEXT = """
+🎬 <b>Шаг 3. Подключение к Wi-Fi</b>
 
-На этом этапе важно внимательно повторить действия из видео.
+На этом этапе внимательно повтори все действия из видео.
 
 Что нужно сделать:
 • открыть нужный раздел
@@ -299,13 +343,13 @@ STEP_3_VIDEO_TEXT = """
 • подключиться к Wi-Fi
 • убедиться, что соединение установлено без ошибок
 
-📌 Просто повторяй всё по видео — это самый важный этап перед настройкой внутри приложения.
+📌 Это ключевой этап перед настройкой внутри приложения.
 
 После просмотра переходи к <b>Шагу 4</b> 👇
 """
 
 STEP_4_TEXT = """
-⚙️ <b>Шаг 4. Настройка в приложении Starlink</b>
+🎬 <b>Шаг 4. Настройка в приложении Starlink</b>
 
 <b>Краткое описание:</b>
 
@@ -313,19 +357,20 @@ STEP_4_TEXT = """
 
 Что важно проверить:
 • приложение открылось без ошибок
-• все доступы разрешены
+• все разрешения подтверждены
 • устройство / соединение определяется корректно
 • инициализация завершилась полностью
-• нет активного VPN
+• VPN выключен
+• геолокация активна
 • приложение обновлено до последней версии
 
-📌 Если приложение предлагает дополнительные параметры — в большинстве случаев оставляй <b>стандартные значения</b>.
+📌 Внимательно повторяй все действия из видео.
 
 После завершения переходи к <b>Шагу 5</b> 👇
 """
 
 STEP_5_TEXT = """
-🚀 <b>Шаг 5. Проверка скорости интернета</b>
+🖼 <b>Шаг 5. Проверка скорости интернета</b>
 
 <b>Краткое описание:</b>
 
@@ -350,6 +395,20 @@ STEP_5_TEXT = """
 • повтори тест ещё раз через 1–2 минуты
 
 ✅ Если тест прошёл успешно — настройка завершена.
+"""
+
+STEP_5_TEXT_2 = """
+🖼 <b>Шаг 5. Пример второго скрина Speedtest</b>
+
+На втором примере показано, как должен выглядеть корректный результат после настройки.
+
+Проверь:
+• соединение стабильно
+• тест завершился без ошибок
+• показатели не обрываются
+• загрузка и выгрузка отображаются корректно
+
+📌 Если результат похож на пример — всё настроено правильно.
 """
 
 NOT_SUBSCRIBED_TEXT = """
@@ -445,7 +504,7 @@ def install_keyboard():
 def faq_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("📦 Установка", callback_data="install")],
-        [InlineKeyboardButton("💬 Связаться с поддержкой", callback_data="support")],
+        [InlineKeyboardButton("💬 Поддержка", callback_data="support")],
         [InlineKeyboardButton("🏠 Главное меню", callback_data="start")],
     ])
 
@@ -454,12 +513,22 @@ def support_keyboard():
         [InlineKeyboardButton("🏠 Главное меню", callback_data="start")],
     ])
 
-def requirements_keyboard():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("➡️ Перейти к Шагу 1", callback_data="step1:1")],
-        [InlineKeyboardButton("💬 Поддержка", callback_data="support")],
-        [InlineKeyboardButton("🏠 Главное меню", callback_data="start")],
-    ])
+def requirements_keyboard(page: int):
+    rows = []
+
+    nav = []
+    if page > 1:
+        nav.append(InlineKeyboardButton("⬅️ Назад", callback_data=f"req:{page-1}"))
+    if page < 3:
+        nav.append(InlineKeyboardButton("➡️ Далее", callback_data=f"req:{page+1}"))
+    if nav:
+        rows.append(nav)
+
+    rows.append([InlineKeyboardButton("➡️ Перейти к Шагу 1", callback_data="step1:1")])
+    rows.append([InlineKeyboardButton("💬 Поддержка", callback_data="support")])
+    rows.append([InlineKeyboardButton("🏠 Главное меню", callback_data="start")])
+
+    return InlineKeyboardMarkup(rows)
 
 def step1_keyboard(page: int):
     rows = []
@@ -521,7 +590,7 @@ def step3_keyboard():
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton("⬅️ Шаг 2", callback_data="step2:1"),
-            InlineKeyboardButton("➡️ Шаг 4", callback_data="step4"),
+            InlineKeyboardButton("➡️ Шаг 4", callback_data="step4:1"),
         ],
         [InlineKeyboardButton("💬 Поддержка", callback_data="support")],
         [InlineKeyboardButton("🏠 Главное меню", callback_data="start")],
@@ -531,18 +600,28 @@ def step4_keyboard():
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton("⬅️ Шаг 3", callback_data="step3:1"),
-            InlineKeyboardButton("➡️ Шаг 5", callback_data="step5"),
+            InlineKeyboardButton("➡️ Шаг 5", callback_data="step5:1"),
         ],
         [InlineKeyboardButton("💬 Поддержка", callback_data="support")],
         [InlineKeyboardButton("🏠 Главное меню", callback_data="start")],
     ])
 
-def step5_keyboard():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("⬅️ Шаг 4", callback_data="step4")],
-        [InlineKeyboardButton("💬 Поддержка", callback_data="support")],
-        [InlineKeyboardButton("🏠 Главное меню", callback_data="start")],
-    ])
+def step5_keyboard(page: int):
+    rows = []
+
+    nav = []
+    if page > 1:
+        nav.append(InlineKeyboardButton("⬅️ Скрин 1", callback_data="step5:1"))
+    if page < 2:
+        nav.append(InlineKeyboardButton("➡️ Скрин 2", callback_data="step5:2"))
+    if nav:
+        rows.append(nav)
+
+    rows.append([InlineKeyboardButton("⬅️ Шаг 4", callback_data="step4:1")])
+    rows.append([InlineKeyboardButton("💬 Поддержка", callback_data="support")])
+    rows.append([InlineKeyboardButton("🏠 Главное меню", callback_data="start")])
+
+    return InlineKeyboardMarkup(rows)
 
 def approved_contact_keyboard():
     return InlineKeyboardMarkup([
@@ -792,8 +871,23 @@ async def render_support(query):
 
     await safe_edit_to_text(query, SUPPORT_MENU_TEXT, support_keyboard())
 
-async def render_requirements(query):
-    await safe_edit_to_text(query, REQUIREMENTS_TEXT, requirements_keyboard())
+async def render_requirements(query, page: int):
+    if page == 2:
+        text = REQUIREMENTS_TEXT_2
+        image = REQ_IMAGE_2
+    elif page == 3:
+        text = REQUIREMENTS_TEXT_3
+        image = REQ_IMAGE_3
+    else:
+        text = REQUIREMENTS_TEXT
+        image = REQ_IMAGE_1
+
+    await safe_edit_to_media_or_text(
+        query=query,
+        image_id=image,
+        text=text,
+        reply_markup=requirements_keyboard(page),
+    )
 
 async def render_step1(query, page: int):
     if page == 2:
@@ -869,15 +963,33 @@ async def render_step3(query, page: int = 1):
         query=query,
         media_type="video",
         file_id=STEP3_VIDEO,
-        text=STEP_3_VIDEO_TEXT,
+        text=STEP_3_TEXT,
         reply_markup=step3_keyboard(),
     )
 
-async def render_step4(query):
-    await safe_edit_to_text(query, STEP_4_TEXT, step4_keyboard())
+async def render_step4(query, page: int = 1):
+    await safe_edit_to_any_media_or_text(
+        query=query,
+        media_type="video",
+        file_id=STEP4_VIDEO,
+        text=STEP_4_TEXT,
+        reply_markup=step4_keyboard(),
+    )
 
-async def render_step5(query):
-    await safe_edit_to_text(query, STEP_5_TEXT, step5_keyboard())
+async def render_step5(query, page: int = 1):
+    if page == 2:
+        text = STEP_5_TEXT_2
+        image = STEP5_IMAGE_2
+    else:
+        text = STEP_5_TEXT
+        image = STEP5_IMAGE_1
+
+    await safe_edit_to_media_or_text(
+        query=query,
+        image_id=image,
+        text=text,
+        reply_markup=step5_keyboard(page),
+    )
 
 # ─── ОТПРАВКА В ГРУППУ ПОДДЕРЖКИ ─────────────────────────────────────────────
 async def forward_user_text_to_support(
@@ -1113,12 +1225,17 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             member = await context.bot.get_chat_member(REVIEWS_CHANNEL_USERNAME, query.from_user.id)
             if member.status in ("member", "administrator", "creator"):
-                await render_requirements(query)
+                await render_requirements(query, 1)
             else:
                 await safe_edit_to_text(query, NOT_SUBSCRIBED_TEXT, install_keyboard())
         except Exception as e:
             logger.error(f"Ошибка проверки подписки: {e}")
             await safe_edit_to_text(query, NOT_SUBSCRIBED_TEXT, install_keyboard())
+        return
+
+    if data.startswith("req:"):
+        page = int(data.split(":")[1])
+        await render_requirements(query, page)
         return
 
     if data.startswith("step1:"):
@@ -1144,12 +1261,13 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await render_step3(query, 1)
         return
 
-    if data == "step4":
-        await render_step4(query)
+    if data.startswith("step4:"):
+        await render_step4(query, 1)
         return
 
-    if data == "step5":
-        await render_step5(query)
+    if data.startswith("step5:"):
+        page = int(data.split(":")[1])
+        await render_step5(query, page)
         return
 
 # ─── АДМИН-КОМАНДЫ ───────────────────────────────────────────────────────────
@@ -1454,12 +1572,41 @@ async def admin_r_video_handler(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text(f"🎥 VIDEO FILE_ID:\n<code>{file_id}</code>", parse_mode="HTML")
         return
 
-    if caption.strip().startswith("/r"):
-        await update.message.reply_text(
-            "ℹ️ Сейчас /r поддерживает текст, фото и файлы.\n"
-            "Для видео пока используется только /g.",
+    if not caption.strip().startswith("/r"):
+        return
+
+    try:
+        target_id, reply_text = get_target_id_for_r_media(update)
+
+        if not target_id:
+            await update.message.reply_text(
+                "📝 Видео + подпись:\n"
+                "/r [ID] [текст]\n\n"
+                "или reply на сообщение пользователя + видео с подписью:\n"
+                "/r [текст]"
+            )
+            return
+
+        if not reply_text:
+            reply_text = "🎥 Сообщение от поддержки"
+
+        if target_id in blocked_users:
+            await update.message.reply_text("⛔ Пользователь заблокирован.")
+            return
+
+        await open_support_chat_for_user(context, target_id)
+
+        await context.bot.send_video(
+            chat_id=target_id,
+            video=update.message.video.file_id,
+            caption=f"💬 <b>Ответ от поддержки:</b>\n\n{reply_text}",
             parse_mode="HTML",
         )
+
+        await update.message.reply_text(f"✅ Видео отправлено пользователю {target_id}")
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка: {e}")
 
 async def admin_r_document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
@@ -1644,8 +1791,10 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         await update.message.reply_text(
-            "🎥 Для видео сейчас доступно:\n"
-            "<code>/g</code> в подписи к видео",
+            "🎥 Reply на сообщение пользователя + видео с подписью:\n"
+            "<code>/r [текст]</code>\n\n"
+            "или:\n<code>/r [ID] [текст]</code>\n\n"
+            "Для file_id:\n<code>/g</code>",
             parse_mode="HTML",
         )
         return
