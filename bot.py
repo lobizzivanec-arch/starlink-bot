@@ -20,7 +20,9 @@ from telegram.ext import (
     ContextTypes,
 )
 
-# ─── НАСТРОЙКИ (Railway Variables) ───────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# НАСТРОЙКИ (Railway Variables)
+# ─────────────────────────────────────────────────────────────────────────────
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 ADMIN_ID = int(os.getenv("ADMIN_ID", "8197197463"))
@@ -57,15 +59,19 @@ STEP5_IMAGE_2 = os.getenv("STEP5_IMAGE_2", "")
 
 STATE_FILE = os.getenv("STATE_FILE", "bot_state.json")
 USER_MESSAGE_COOLDOWN = int(os.getenv("USER_MESSAGE_COOLDOWN", "6"))
-# ──────────────────────────────────────────────────────────────────────────────
 
+# ─────────────────────────────────────────────────────────────────────────────
+# ЛОГИ
+# ─────────────────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 )
 logger = logging.getLogger(__name__)
 
-# ─── СОСТОЯНИЯ ────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# СОСТОЯНИЯ
+# ─────────────────────────────────────────────────────────────────────────────
 waiting_for_photo: set[int] = set()
 submitted_requests: set[int] = set()
 active_support_chats: set[int] = set()
@@ -74,7 +80,9 @@ blocked_users: set[int] = set()
 # антиспам
 user_last_message_time: dict[int, float] = {}
 
-# ─── PERSISTENCE JSON ─────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# PERSISTENCE JSON
+# ─────────────────────────────────────────────────────────────────────────────
 def save_state():
     try:
         data = {
@@ -105,7 +113,9 @@ def load_state():
     except Exception as e:
         logger.error(f"Ошибка загрузки состояния: {e}")
 
-# ─── ТЕКСТЫ ───────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# ТЕКСТЫ
+# ─────────────────────────────────────────────────────────────────────────────
 WELCOME_TEXT = """
 👋 <b>Привет!</b>
 
@@ -175,36 +185,34 @@ INSTALL_TEXT = """
 """
 
 REQUIREMENTS_TEXT = """
-⚠️ <b>Перед началом настройки — обязательные требования</b>
+🖼 <b>Требования перед началом настройки</b>
 
 Перед тем как переходить к установке, обязательно проверь:
 
-• <b>Версия iOS не ниже 18.0</b>
+• <b>Версия iOS не ниже 18.0</b>  
 (желательно обновить iPhone до <b>последней версии iOS</b>)
 
-• <b>На время настройки полностью выключи VPN</b>
+• <b>На время настройки полностью выключи VPN</b>  
 (после завершения можно включить обратно)
 
-• <b>Отключи режим энергосбережения</b>
+• <b>Отключи режим энергосбережения</b>  
 (он может мешать стабильной работе приложения и Wi-Fi)
 
-• <b>Включи геолокацию на iPhone</b>
+• <b>Включи геолокацию на iPhone</b>  
 (<b>Локатор / Службы геолокации</b> должны быть активны)
 
-• <b>Разреши приложению Starlink доступ к геопозиции</b>
+• <b>Разреши приложению Starlink доступ к геопозиции</b>  
 (это важно для корректного поиска сети и настройки)
 
-• <b>Разреши доступ к локальной сети и Wi-Fi</b>
+• <b>Разреши доступ к локальной сети и Wi-Fi</b>  
 (если iPhone спросит разрешение — обязательно нажми <b>«Разрешить»</b>)
 
-• <b>Освободи минимум 1–2 ГБ памяти</b>
-(для установки приложения и возможных обновлений)
+• <b>Освободи минимум 1–2 ГБ памяти</b>  
+(для установки приложения и обновлений)
 
 • <b>Подключись к стабильному интернету на время настройки</b>
-(лучше домашний Wi-Fi или мобильный интернет без VPN)
 
 • <b>Закрой лишние приложения перед началом</b>
-(чтобы ничего не мешало установке и обновлению)
 
 После этого переходи к <b>Шагу 1</b> 👇
 """
@@ -214,10 +222,10 @@ REQUIREMENTS_TEXT_2 = """
 
 Проверь на этом экране:
 
-• геолокация / Локатор включены
-• VPN выключен
-• режим энергосбережения отключён
-• все системные разрешения активны
+• геолокация / Локатор включены  
+• VPN выключен  
+• режим энергосбережения отключён  
+• все системные разрешения активны  
 
 ⚠️ Если хотя бы один из пунктов не выполнен — настройка может пройти с ошибками.
 
@@ -229,16 +237,16 @@ REQUIREMENTS_TEXT_3 = """
 
 Финальная проверка перед запуском:
 
-• iPhone обновлён
-• интернет стабилен
-• Starlink получит доступ к геопозиции
-• ограничения iOS не мешают подключению
+• iPhone обновлён  
+• интернет стабилен  
+• Starlink получит доступ к геопозиции  
+• ограничения iOS не мешают подключению  
 
 📌 Чем точнее выполнены требования — тем быстрее проходит вся настройка.
 """
 
 STEP_1_TEXT = """
-📦 <b>Шаг 1. Доступ в аккаунт с доступом к Starlink</b>
+🖼 <b>Шаг 1. Доступ в аккаунт с доступом к Starlink</b>
 
 <b>Краткое описание:</b>
 
@@ -301,7 +309,7 @@ ACCESS_TEXT_2 = """
 """
 
 STEP_2_TEXT = """
-📲 <b>Шаг 2. Установка приложения Starlink</b>
+🖼 <b>Шаг 2. Установка приложения Starlink</b>
 
 <b>Краткое описание:</b>
 
@@ -485,7 +493,9 @@ SPAM_WAIT_TEXT = f"""
 ⏳ <b>Подожди {USER_MESSAGE_COOLDOWN} сек перед следующим сообщением.</b>
 """
 
-# ─── КЛАВИАТУРЫ ───────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# КЛАВИАТУРЫ
+# ─────────────────────────────────────────────────────────────────────────────
 def main_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("❓ Частые вопросы", callback_data="faq")],
@@ -647,7 +657,9 @@ def photo_moderation_keyboard(user_id: int):
         ]
     ])
 
-# ─── ВСПОМОГАТЕЛЬНЫЕ ──────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# ВСПОМОГАТЕЛЬНЫЕ
+# ─────────────────────────────────────────────────────────────────────────────
 def safe_username(username: str | None) -> str:
     return f"@{username}" if username else "без username"
 
@@ -774,6 +786,9 @@ async def open_support_chat_for_user(context: ContextTypes.DEFAULT_TYPE, user_id
     except Exception as e:
         logger.error(f"Не удалось открыть чат поддержки для {user_id}: {e}")
 
+# ─────────────────────────────────────────────────────────────────────────────
+# SAFE EDIT / SINGLE-MESSAGE FIX
+# ─────────────────────────────────────────────────────────────────────────────
 async def safe_edit_to_text(query, text: str, reply_markup: InlineKeyboardMarkup):
     try:
         if query.message.photo or query.message.video:
@@ -791,7 +806,13 @@ async def safe_edit_to_text(query, text: str, reply_markup: InlineKeyboardMarkup
     except Exception as e:
         logger.warning(f"safe_edit_to_text fallback: {e}")
         try:
-            await query.message.reply_text(
+            # если редактирование не вышло — удаляем и шлём новое
+            try:
+                await query.message.delete()
+            except Exception:
+                pass
+
+            await query.message.chat.send_message(
                 text=text,
                 parse_mode="HTML",
                 reply_markup=reply_markup,
@@ -805,21 +826,44 @@ async def safe_edit_to_media_or_text(
     text: str,
     reply_markup: InlineKeyboardMarkup,
 ):
-    if image_id:
+    # если нет картинки — просто текст
+    if not image_id:
+        await safe_edit_to_text(query, text, reply_markup)
+        return
+
+    try:
+        media = InputMediaPhoto(
+            media=image_id,
+            caption=text[:1024],
+            parse_mode="HTML",
+        )
+        await query.edit_message_media(
+            media=media,
+            reply_markup=reply_markup,
+        )
+        return
+
+    except Exception as e:
+        logger.warning(f"edit_message_media(photo) failed: {e}")
+
+        # если text -> photo не вышло, удаляем старое и шлём новое
         try:
-            media = InputMediaPhoto(
-                media=image_id,
+            await query.message.delete()
+        except Exception as e_del:
+            logger.warning(f"Не удалось удалить старое сообщение: {e_del}")
+
+        try:
+            await query.message.chat.send_photo(
+                photo=image_id,
                 caption=text[:1024],
                 parse_mode="HTML",
-            )
-            await query.edit_message_media(
-                media=media,
                 reply_markup=reply_markup,
             )
             return
-        except Exception as e:
-            logger.warning(f"edit_message_media(photo) failed, fallback to text: {e}")
+        except Exception as e_send:
+            logger.error(f"Не удалось отправить фото заново: {e_send}")
 
+    # крайний fallback
     await safe_edit_to_text(query, text, reply_markup)
 
 async def safe_edit_to_any_media_or_text(
@@ -829,32 +873,65 @@ async def safe_edit_to_any_media_or_text(
     text: str,
     reply_markup: InlineKeyboardMarkup,
 ):
-    if file_id:
+    # если нет file_id — просто текст
+    if not file_id:
+        await safe_edit_to_text(query, text, reply_markup)
+        return
+
+    try:
+        if media_type == "video":
+            media = InputMediaVideo(
+                media=file_id,
+                caption=text[:1024],
+                parse_mode="HTML",
+            )
+        else:
+            media = InputMediaPhoto(
+                media=file_id,
+                caption=text[:1024],
+                parse_mode="HTML",
+            )
+
+        await query.edit_message_media(
+            media=media,
+            reply_markup=reply_markup,
+        )
+        return
+
+    except Exception as e:
+        logger.warning(f"edit_message_media({media_type}) failed: {e}")
+
+        # если text -> media не получилось, удаляем старое и шлём новое
+        try:
+            await query.message.delete()
+        except Exception as e_del:
+            logger.warning(f"Не удалось удалить старое сообщение: {e_del}")
+
         try:
             if media_type == "video":
-                media = InputMediaVideo(
-                    media=file_id,
+                await query.message.chat.send_video(
+                    video=file_id,
                     caption=text[:1024],
                     parse_mode="HTML",
+                    reply_markup=reply_markup,
                 )
             else:
-                media = InputMediaPhoto(
-                    media=file_id,
+                await query.message.chat.send_photo(
+                    photo=file_id,
                     caption=text[:1024],
                     parse_mode="HTML",
+                    reply_markup=reply_markup,
                 )
-
-            await query.edit_message_media(
-                media=media,
-                reply_markup=reply_markup,
-            )
             return
-        except Exception as e:
-            logger.warning(f"safe_edit_to_any_media_or_text failed ({media_type}), fallback to text: {e}")
+        except Exception as e_send:
+            logger.error(f"Не удалось отправить {media_type} заново: {e_send}")
 
+    # крайний fallback
     await safe_edit_to_text(query, text, reply_markup)
 
-# ─── ЭКРАНЫ SINGLE MESSAGE ────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# ЭКРАНЫ SINGLE MESSAGE
+# ─────────────────────────────────────────────────────────────────────────────
 async def render_start(query):
     await safe_edit_to_text(query, WELCOME_TEXT, main_keyboard())
 
@@ -991,7 +1068,9 @@ async def render_step5(query, page: int = 1):
         reply_markup=step5_keyboard(page),
     )
 
-# ─── ОТПРАВКА В ГРУППУ ПОДДЕРЖКИ ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# ОТПРАВКА В ГРУППУ ПОДДЕРЖКИ
+# ─────────────────────────────────────────────────────────────────────────────
 async def forward_user_text_to_support(
     context: ContextTypes.DEFAULT_TYPE,
     user_id: int,
@@ -1092,7 +1171,9 @@ async def forward_user_document_to_support(
     except Exception as e:
         logger.error(f"Не удалось отправить файл в support-группу: {e}")
 
-# ─── CALLBACK / КНОПКИ ───────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# CALLBACK / КНОПКИ
+# ─────────────────────────────────────────────────────────────────────────────
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         WELCOME_TEXT,
@@ -1106,7 +1187,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     clicker_id = query.from_user.id
     data = query.data
 
-    # ── модерация фото ────────────────────────────────────────────────────────
+    # ── модерация фото ───────────────────────────────────────────────────────
     if data.startswith(("approve:", "reject:", "blockcb:")):
         if clicker_id != ADMIN_ID:
             await query.answer("У вас нет доступа.", show_alert=True)
@@ -1204,7 +1285,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.answer("Не удалось заблокировать.", show_alert=True)
             return
 
-    # ── основная навигация single-message ─────────────────────────────────────
+    # ── основная навигация single-message ────────────────────────────────────
     if data == "start":
         await render_start(query)
         return
@@ -1270,7 +1351,9 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await render_step5(query, page)
         return
 
-# ─── АДМИН-КОМАНДЫ ───────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# АДМИН-КОМАНДЫ
+# ─────────────────────────────────────────────────────────────────────────────
 async def cmd_r(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
@@ -1509,7 +1592,9 @@ async def cmd_getfileid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML"
     )
 
-# ─── АДМИН: ФОТО / ВИДЕО / ФАЙЛЫ ЧЕРЕЗ /r И /g ──────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# АДМИН: ФОТО / ВИДЕО / ФАЙЛЫ ЧЕРЕЗ /r И /g
+# ─────────────────────────────────────────────────────────────────────────────
 async def admin_r_photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
@@ -1658,7 +1743,9 @@ async def admin_r_document_handler(update: Update, context: ContextTypes.DEFAULT
     except Exception as e:
         await update.message.reply_text(f"❌ Ошибка: {e}")
 
-# ─── ПОЛЬЗОВАТЕЛЬСКИЕ СООБЩЕНИЯ ──────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# ПОЛЬЗОВАТЕЛЬСКИЕ СООБЩЕНИЯ
+# ─────────────────────────────────────────────────────────────────────────────
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id, username, full_name = build_user_info(update)
     text = update.message.text if update.message.text else ""
@@ -1693,7 +1780,9 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=support_keyboard(),
         )
 
-# ─── ПОЛЬЗОВАТЕЛЬСКИЕ ФОТО ───────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# ПОЛЬЗОВАТЕЛЬСКИЕ ФОТО
+# ─────────────────────────────────────────────────────────────────────────────
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id, username, full_name = build_user_info(update)
 
@@ -1780,7 +1869,9 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Ошибка отправки фото в поддержку: {e}")
         await update.message.reply_text("❌ Не удалось отправить фото в поддержку.")
 
-# ─── ПОЛЬЗОВАТЕЛЬСКИЕ ВИДЕО ──────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# ПОЛЬЗОВАТЕЛЬСКИЕ ВИДЕО
+# ─────────────────────────────────────────────────────────────────────────────
 async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id, username, full_name = build_user_info(update)
 
@@ -1834,7 +1925,9 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Ошибка отправки видео в поддержку: {e}")
         await update.message.reply_text("❌ Не удалось отправить видео в поддержку.")
 
-# ─── ПОЛЬЗОВАТЕЛЬСКИЕ ФАЙЛЫ ──────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# ПОЛЬЗОВАТЕЛЬСКИЕ ФАЙЛЫ
+# ─────────────────────────────────────────────────────────────────────────────
 async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id, username, full_name = build_user_info(update)
 
@@ -1935,7 +2028,9 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Ошибка отправки файла в поддержку: {e}")
         await update.message.reply_text("❌ Не удалось отправить файл в поддержку.")
 
-# ─── ЗАПУСК ───────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# ЗАПУСК
+# ─────────────────────────────────────────────────────────────────────────────
 def main():
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN не найден. Добавь переменную BOT_TOKEN в Railway Variables.")
